@@ -368,7 +368,7 @@ def download_weather_info_from_openweather(city_name):
             if not exists(filedir):
                 makedirs(filedir)
             write_at_file_with_current_datetime_as_filename(target_metrics, current_time, filedir)
-
+            return target_metrics
         else:
             print(f"Please enter a valid city name, other than {city_name}")
 

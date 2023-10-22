@@ -97,6 +97,24 @@ def drop_table(table_name):
     command = f'drop table if exists {table_name}'
     execute_command(command)
 
+def create_vehicle_count_table():
+    commands = (
+        """
+        CREATE TABLE vehicle_count (
+            datetime TIMESTAMP WITH TIME ZONE,
+            camera_id VARCHAR(20),
+            total_pedestrians INT4,
+            total_vehicles INT4,
+            bicycle INT4,
+            bus INT4,
+            motorcycle INT4,
+            person INT4,
+            truck INT4,
+            PRIMARY KEY (datetime, camera_id)
+        );
+        """,
+    )
+    execute_commands(commands)
 
 def create_tables():
     """ create tables in the PostgreSQL database"""
@@ -188,7 +206,7 @@ def enclose_in_quotes(input_str):
     return output_str
 
 
-def read_table_with_select(table_name, params=None):
+def read_table_with_select(table_name, params=None, conn=None):
     command = f'SELECT * FROM {table_name} '
     if len(params) > 0:
         where_clause = 'WHERE '
@@ -196,7 +214,8 @@ def read_table_with_select(table_name, params=None):
         for vals in params:
             command = command + ' '.join(vals) + ' '
 
-    conn = engine_connect()
+    if conn is None:
+        conn = engine_connect()
     df = pd.read_sql(text(command), conn)
     return df
 
