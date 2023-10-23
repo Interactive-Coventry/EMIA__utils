@@ -1,8 +1,13 @@
+import logging
+
 import psycopg2
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.engine.base import Connection
 import pandas as pd
 from libs.foxutils.utils.core_utils import settings
+
+logger = logging.getLogger("emia_utils.database_utils")
 
 # read connection parameters
 host = settings["DATABASE"]["host"]
@@ -100,8 +105,8 @@ def drop_table(table_name):
 def create_vehicle_count_table():
     commands = (
         """
-        CREATE TABLE vehicle_count (
-            datetime TIMESTAMP WITH TIME ZONE,
+        CREATE TABLE vehicle_counts (
+            datetime TIMESTAMP WITHOUT TIME ZONE,
             camera_id VARCHAR(20),
             total_pedestrians INT4,
             total_vehicles INT4,
@@ -110,6 +115,7 @@ def create_vehicle_count_table():
             motorcycle INT4,
             person INT4,
             truck INT4,
+            car INT4,
             PRIMARY KEY (datetime, camera_id)
         );
         """,
@@ -121,7 +127,7 @@ def create_tables():
     commands = (
         """
         CREATE TABLE weather (
-            datetime TIMESTAMP WITH TIME ZONE PRIMARY KEY,
+            datetime TIMESTAMP WITHOUT TIME ZONE PRIMARY KEY,
             temp FLOAT8, 
             feels_like FLOAT4,
             temp_min FLOAT4,
@@ -169,20 +175,22 @@ def append_df_to_table(df, table_name, append_only_new=True):
         if append_only_new:
             index = df.index.name
             db_start_index, db_end_index = get_min_max_primary_key(table_name, index)
-            print(
-                f'Table [{table_name}] with index [{index}] has start index {db_start_index} and end index {db_end_index}.')
-            df = df.loc[(df.index < db_start_index) | (df.index > db_end_index)]
+            if db_start_index is not None and db_end_index is not None:
+                logger.debug(
+                    f'Table [{table_name}] with index [{index}] has start index {db_start_index} and end index {db_end_index}.')
+                df = df.loc[(df.index.to_pydatetime() < db_start_index) | (df.index.to_pydatetime() > db_end_index)]
 
         if len(df) > 0:
             df.to_sql(table_name, engine_connect(), if_exists='append', schema='public', chunksize=50)
             set_primary_key_from_df(df, table_name)
-            print(f'Appending values outside current bounds only (Total new values: {len(df)}).')
+            logger.debug(f'Appending values outside current bounds only (Total new values: {len(df)}).')
 
         else:
-            print('Nothing to append.')
+            logger.debug('Nothing to append.')
 
-    except IntegrityError:
-        print("Can't append, because key exists")
+    except IntegrityError as e:
+        logger.info(f"IntegrityError: {e}")
+        logger.info("Can't append, because key exists")
 
 
 def get_min_max_primary_key(table_name, id_name=None):
@@ -191,7 +199,10 @@ def get_min_max_primary_key(table_name, id_name=None):
 
     command = f'SELECT MIN({id_name}), MAX({id_name})  from {table_name};'
     result = execute_command_and_do_something(command, fetch_one)
-    return result[0], result[1]
+    if result is None:
+        None, None
+    else:
+        return result[0], result[1]
 
 
 def get_timezone():
@@ -216,7 +227,13 @@ def read_table_with_select(table_name, params=None, conn=None):
 
     if conn is None:
         conn = engine_connect()
-    df = pd.read_sql(text(command), conn)
+
+    if isinstance(conn, Connection): # For SQLAlchemy
+        command = text(command)
+        df = pd.read_sql(command, conn)
+    if type(conn).__name__ == "SQLConnection": # For streamlit
+        df = conn.query(command)
+
     return df
 
 
