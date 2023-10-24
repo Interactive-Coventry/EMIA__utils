@@ -10,15 +10,30 @@ from libs.foxutils.utils.core_utils import settings
 logger = logging.getLogger("emia_utils.database_utils")
 
 def get_connection_parameters(host=None, dbname=None, user=None, password=None):
-    if host is None:
-        host = settings["DATABASE"]["host"]
-    if dbname is None:
-        dbname = settings["DATABASE"]["dbname"]
-    if user is None:
-        user = settings["DATABASE"]["user"]
-    if password is None:
-        password = settings["DATABASE"]["password"]
+    if settings["TOKENS"]["read_from"] == "local":
+        logger.debug(f"Reading from local settings")
+        if host is None:
+            host = settings["DATABASE"]["host"]
+        if dbname is None:
+            dbname = settings["DATABASE"]["dbname"]
+        if user is None:
+            user = settings["DATABASE"]["user"]
+        if password is None:
+            password = settings["DATABASE"]["password"]
 
+    elif settings["TOKENS"]["read_from"] == "secrets":
+        import streamlit as st
+        logger.debug(f"Reading from secrets")
+        if host is None:
+            host = st.secrets.connections.postgresql.host
+        if dbname is None:
+            dbname = st.secrets.connections.postgresql.database
+        if user is None:
+            user = st.secrets.connections.postgresql.username
+        if password is None:
+            password = st.secrets.connections.postgresql.password
+
+    print(f"Connecting to {host} {dbname} {user} {password}")
     return host, dbname, user, password
 
 
