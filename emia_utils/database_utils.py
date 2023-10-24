@@ -9,25 +9,32 @@ from libs.foxutils.utils.core_utils import settings
 
 logger = logging.getLogger("emia_utils.database_utils")
 
-# read connection parameters
-host = settings["DATABASE"]["host"]
-dbname = settings["DATABASE"]["dbname"]
-user = settings["DATABASE"]["user"]
-password = settings["DATABASE"]["password"]
+def get_connection_parameters(host=None, dbname=None, user=None, password=None):
+    if host is None:
+        host = settings["DATABASE"]["host"]
+    if dbname is None:
+        dbname = settings["DATABASE"]["dbname"]
+    if user is None:
+        user = settings["DATABASE"]["user"]
+    if password is None:
+        password = settings["DATABASE"]["password"]
+
+    return host, dbname, user, password
 
 
 def engine_connect():
-    # establish connections
+    host, dbname, user, password = get_connection_parameters()
     conn_string = f'postgresql://{user}:{password}@{host}/{dbname}'
     db = create_engine(conn_string)
     conn = db.connect()
     return conn
 
 
-def connect():
+def connect(host=None, dbname=None, user=None, password=None):
     conn = None
     try:
-        # conn = psycopg2.connect(f"dbname={dbname} user={user} password={password}")
+        host, dbname, user, password = get_connection_parameters(host, dbname, user, password)
+
         conn = psycopg2.connect(
             host=host,
             database=dbname,
