@@ -17,31 +17,31 @@ from requests import JSONDecodeError
 
 ######################################################################
 # Setup
-general_headers = {
+GENERAL_HEADERS = {
     "Accept": "application/json",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36 Edg/116.0.1938.81",
     "Connection": "keep-alive",
 }
 
-headers = general_headers
-headers.update({"AccountKey": core_utils.get_api_key("datamall.json")})
+DATAMALL_HEADERS = GENERAL_HEADERS
+DATAMALL_HEADERS.update({"AccountKey": core_utils.get_api_key("datamall.json")})
 
 
-uri = 'http://datamall2.mytransport.sg/'
-tz_SG = pytz.timezone('Asia/Singapore')
+DATAMALL_URI = 'http://datamall2.mytransport.sg/'
+TZ_SG = pytz.timezone('Asia/Singapore')
 
-openweathermap_token_key = core_utils.get_api_key("openweathermap.json")
-target_city = "SINGAPORE"
-openweathermap_target_uri = "http://api.openweathermap.org/data/2.5/weather?"
+OPENWEATHERMAP_TOKEN_KEY = core_utils.get_api_key("openweathermap.json")
+TARGET_CITY = "SINGAPORE"
+OPENWEATHERMAP_TARGET_URI = "http://api.openweathermap.org/data/2.5/weather?"
 
-weather_folder = "openweathermap"
-mapfiles_folder = "mapfiles"
-datamall_folder = "datamall"
+WEATHER_FOLDER = "openweathermap"
+MAPFILES_FOLDER = "mapfiles"
+DATAMALL_FOLDER = "datamall"
 
 
 def get_json_object_from_http_request(path):
     # Build query string & specify type of API call
-    target = urlparse(uri + path)
+    target = urlparse(DATAMALL_URI + path)
     # print(target.geturl())
     method = 'GET'
     body = ''
@@ -52,7 +52,7 @@ def get_json_object_from_http_request(path):
         target.geturl(),
         method,
         body,
-        headers)
+        DATAMALL_HEADERS)
 
     jsonObj = json.loads(content)
     return jsonObj
@@ -73,15 +73,15 @@ def write_at_file_with_current_datetime_as_filename(data, current_time, filedir)
 
 
 def fetch_data_from_value(path, page_size='10000'):
-    target = urlparse(uri + path)
-    success, req = core_utils.get_request(target.geturl(), headers=headers)
+    target = urlparse(DATAMALL_URI + path)
+    success, req = core_utils.get_request(target.geturl(), headers=DATAMALL_HEADERS)
     if success:
-        current_time = datetime.now(tz_SG)
+        current_time = datetime.now(TZ_SG)
 
         json_obj = req.json()
         if "value" in json_obj:
             data = json_obj["value"]
-            filedir = pathjoin(core_utils.datasets_dir, datamall_folder, path.replace('/', sep).replace('?', ''))
+            filedir = pathjoin(core_utils.datasets_dir, DATAMALL_FOLDER, path.replace('/', sep).replace('?', ''))
             if not exists(filedir):
                 makedirs(filedir)
 
@@ -102,7 +102,7 @@ def fetch_data_from_link_in_value(path, page_size='10000'):
     if "value" in json_obj:
         if "Link" in json_obj["value"][0]:
             zip_file_url = json_obj["value"][0]["Link"]
-            filedir = pathjoin(core_utils.datasets_dir, datamall_folder, path.replace('/', sep).replace('?', ''))
+            filedir = pathjoin(core_utils.datasets_dir, DATAMALL_FOLDER, path.replace('/', sep).replace('?', ''))
             if not exists(filedir):
                 makedirs(filedir)
 
@@ -131,7 +131,7 @@ def fetch_df_from_value(path, filename, folder_suffix=None):
             else:
                 df = pd.concat([df, pd.DataFrame([x])], ignore_index=True)
 
-    filedir = pathjoin(core_utils.datasets_dir, datamall_folder, path.replace('/', sep).replace('?', ''))
+    filedir = pathjoin(core_utils.datasets_dir, DATAMALL_FOLDER, path.replace('/', sep).replace('?', ''))
     if folder_suffix is not None:
         filedir = filedir + '_' + folder_suffix
 
@@ -154,11 +154,11 @@ def fetch_bus_arrival(path, bus_stop_code, service_no='', page_size='10000'):
         prefix = '_'.join([bus_stop_code, service_no])
 
     # Build query string & specify type of API call
-    target = urlparse(uri + path)
-    success, req = core_utils.get_request(target.geturl(), params=params, headers=headers)
+    target = urlparse(DATAMALL_URI + path)
+    success, req = core_utils.get_request(target.geturl(), params=params, headers=DATAMALL_HEADERS)
     if success:
         # print(req.url)
-        current_time = datetime.now(tz_SG)
+        current_time = datetime.now(TZ_SG)
 
         try:
             json_obj = req.json()
@@ -167,7 +167,7 @@ def fetch_bus_arrival(path, bus_stop_code, service_no='', page_size='10000'):
                 if service_no != '':
                     data = [x for x in json_obj["Services"] if x["ServiceNo"] == service_no]
 
-                filedir = pathjoin(core_utils.datasets_dir, datamall_folder, path.replace('/', sep).replace('?', ''))
+                filedir = pathjoin(core_utils.datasets_dir, DATAMALL_FOLDER, path.replace('/', sep).replace('?', ''))
                 if not exists(filedir):
                     makedirs(filedir)
                 if data:
@@ -224,8 +224,7 @@ def download_dataset_12_car_park_availability():
 
 def fetch_traffic_images_from_link(path, page_size='10000', target_camera_id=None):
     json_obj = get_json_object_from_http_request(path)
-    tz_SG = pytz.timezone('Asia/Singapore')
-    current_time = datetime.now(tz_SG)
+    current_time = datetime.now(TZ_SG)
 
     if 'value' in json_obj:
         for x in json_obj['value']:
@@ -236,7 +235,7 @@ def fetch_traffic_images_from_link(path, page_size='10000', target_camera_id=Non
                 img_url = x['ImageLink']
 
                 folder = camera_id
-                filedir = pathjoin(core_utils.datasets_dir, datamall_folder, path.replace('/', sep).replace('?', ''),
+                filedir = pathjoin(core_utils.datasets_dir, DATAMALL_FOLDER, path.replace('/', sep).replace('?', ''),
                                    folder)
                 if not exists(filedir):
                     makedirs(filedir)
@@ -264,7 +263,7 @@ def run_scheduler_dataset_21_traffic_images():
 
 
 def get_static_dataset_df(path, filename):
-    filedir = pathjoin(core_utils.datasets_dir, datamall_folder, path.replace('/', sep).replace('?', ''))
+    filedir = pathjoin(core_utils.datasets_dir, DATAMALL_FOLDER, path.replace('/', sep).replace('?', ''))
     df = pd.read_csv(pathjoin(filedir, filename + '.csv'), index_col=0)
     return df
 
@@ -325,7 +324,7 @@ def get_dataset_21_traffic_images_camera_locations():
 
 
 def get_mapfiles_filedir(filename='SGP_adm0.shp'):
-    filedir = pathjoin(core_utils.datasets_dir, mapfiles_folder, filename)
+    filedir = pathjoin(core_utils.datasets_dir, MAPFILES_FOLDER, filename)
     return filedir
 
 
@@ -333,11 +332,11 @@ def get_mapfiles_filedir(filename='SGP_adm0.shp'):
 # weather
 
 def download_weather_info_from_openweather(city_name):
-    url = f"{openweathermap_target_uri}q={city_name}&appid={openweathermap_token_key}"
-    success, response = core_utils.get_request(url, headers=general_headers)
+    url = f"{OPENWEATHERMAP_TARGET_URI}q={city_name}&appid={OPENWEATHERMAP_TOKEN_KEY}"
+    success, response = core_utils.get_request(url, headers=GENERAL_HEADERS)
     if success:
         res = response.json()
-        current_time = datetime.now(tz_SG)
+        current_time = datetime.now(TZ_SG)
         target_metrics = dict()
 
         if res["cod"] != "404":
@@ -356,7 +355,7 @@ def download_weather_info_from_openweather(city_name):
             if 'coord' in res:
                 target_metrics.update({'lat': res["coord"]["lat"], 'lon': res["coord"]["lon"]})
             if 'dt' in res:
-                measured_datetime = datetime.fromtimestamp(res["dt"], tz=tz_SG)
+                measured_datetime = datetime.fromtimestamp(res["dt"], tz=TZ_SG)
                 target_metrics.update({'dt': res["dt"], 'timezone': res["timezone"],
                                        'measured_datetime': core_utils.convert_datetime_to_string(measured_datetime)})
                 current_time = measured_datetime
@@ -365,11 +364,11 @@ def download_weather_info_from_openweather(city_name):
                     if 'description' in ["weather"][0]:
                         target_metrics.update({'description': res["weather"][0]["description"]})
 
-            filedir = pathjoin(core_utils.datasets_dir, weather_folder.replace('/', sep).replace('?', ''))
+            filedir = pathjoin(core_utils.datasets_dir, WEATHER_FOLDER.replace('/', sep).replace('?', ''))
             if not exists(filedir):
                 makedirs(filedir)
             write_at_file_with_current_datetime_as_filename(target_metrics, current_time, filedir)
-
+            return target_metrics
         else:
             print(f"Please enter a valid city name, other than {city_name}")
 

@@ -1,3 +1,5 @@
+import logging
+
 from libs.foxutils.utils import core_utils, dataframe_utils
 from . import database_utils
 
@@ -22,6 +24,7 @@ tz_GR = pytz.timezone('Europe/Athens')
 tz_local = tz_GR
 weather_folder = "openweathermap"
 datamall_folder = "datamall"
+logger = logging.getLogger("emia_utils.process_utils")
 
 
 
@@ -49,7 +52,7 @@ def prepare_data(prefix, start_date, end_date):
                 tzinfo=None)
             if current_datetime is not None and est_arrival_datetime is not None:
                 if start_date < current_datetime <= end_date:
-                    values = {'fetch_time': minute_rounder(current_datetime),
+                    values = {'fetch_time': current_datetime,
                               'response_time': current_datetime,
                               'est_arrival_time': est_arrival_datetime,
                               'visit_number': json_data[0]["NextBus"]["VisitNumber"],
@@ -131,12 +134,38 @@ def read_csv_data_as_dataframe(start_date, end_date, target_path, target_columns
             current_datetime = core_utils.convert_fully_connected_string_to_datetime(str_date)
             if current_datetime is not None:
                 if start_date < current_datetime <= end_date:
-                    values = {'datetime': minute_rounder(current_datetime), 'data': json_data}
+                    values = {'datetime': current_datetime, 'data': json_data}
                     df1.loc[len(df1.index)] = values
 
-    #df1.drop_duplicates(inplace=True)
-
     return df1
+
+def make_vehicle_counts_df(values):
+    target_columns = { "datetime", "camera_id", "total_pedestrians", "total_vehicles", "bicycle",
+                       "bus", "motorcycle", "person", "truck", "car" }
+    keys_to_drop = [x for x in values.keys() if x not in target_columns]
+    [values.pop(x) for x in keys_to_drop]
+    [values.update({x: 0}) for x in target_columns if x not in values.keys()]
+
+    proper_time = values["datetime"]
+    proper_time.replace(tzinfo=None)
+    values["datetime"] = proper_time
+    return values
+
+
+def make_weather_df(values):
+    target_columns = ["datetime", "temp", "feels_like", "temp_min", "temp_max", "pressure", "humidity",
+                      "wind_speed", "wind_deg", "clouds_all", "visibility", "lat", "lon", "dt",
+                      "timezone", "weather_id", "weather", "description"]
+    measure_datetime = values["measured_datetime"]
+    keys_to_drop = [x for x in values.keys() if x not in target_columns]
+    [values.pop(x) for x in keys_to_drop]
+    [values.update({x: None}) for x in target_columns if x not in values.keys()]
+    # Convert time with timezone
+    proper_time = core_utils.convert_string_to_date(measure_datetime)
+    proper_time.replace(tzinfo=None)
+    values["datetime"] = proper_time
+
+    return values
 
 
 def prepare_weather_data(start_date, end_date, response_timezone=tz_local, read_from_db=False):
@@ -157,12 +186,8 @@ def prepare_weather_data(start_date, end_date, response_timezone=tz_local, read_
     else:
         dataset_dir = pathjoin(core_utils.datasets_dir, weather_folder.replace('/', sep).replace('?', ''))
 
-        target_timezone = tz_SG
         target_files = listdir(dataset_dir)
-        target_columns = ["datetime", "temp", "feels_like", "temp_min", "temp_max", "pressure", "humidity",
-                          "wind_speed", "wind_deg", "clouds_all", "visibility", "lat", "lon", "dt",
-                          "timezone", "weather_id", "weather", "description"]
-        df1 = pd.DataFrame(columns=target_columns)
+        df1 = pd.DataFrame()
 
         for filename in target_files:
             with open(pathjoin(dataset_dir, filename), mode="r") as f:
@@ -172,11 +197,7 @@ def prepare_weather_data(start_date, end_date, response_timezone=tz_local, read_
                 if current_datetime is not None:
                     if start_date < current_datetime <= end_date:
                         values = json_data
-                        [values.update({x: None}) for x in target_columns if x not in values.keys()]
-                        # Convert time with timezone
-                        local_time = pd.to_datetime(datetime.fromtimestamp(values['dt']))
-                        proper_time = convert_local_to_target_timezone(local_time, target_timezone, response_timezone)
-                        values['datetime'] = minute_rounder(proper_time)
+                        make_weather_df(values, response_timezone)
                         df1.loc[len(df1.index)] = values
 
         df1.drop_duplicates(inplace=True)
@@ -371,6 +392,49 @@ def rearrange_class_dict(class_dict, target_classes=None):
     return new_dict
 
 
+def prepare_features_for_vehicle_counts(df_vehicles, df_weather=None, dropna=True,
+                                      include_weather_description=True ):
+    index_column = "datetime"
+
+    if df_weather is not None:
+        dropped_side_cols = ["lat", "lon", "dt", "timezone", "temp_min", "temp_max"]
+        df_weather.drop(columns=dropped_side_cols, inplace=True)
+
+        weather_description_cols = ["weather", "description", "weather_id"]
+        if include_weather_description:
+            df_weather.dropna(inplace=True)
+            weather_dict, weather_classes, df_weather = dataframe_utils.encode_categorical_values(df_weather, "weather")
+            weather_description_dict, weather_description_classes, df_weather = dataframe_utils.encode_categorical_values(df_weather, 'description')
+            df_weather_categ = df_weather[weather_description_cols + [index_column]]
+
+        df_weather.drop(columns=weather_description_cols, inplace=True)
+
+        join_method = "outer"
+        use_interpolation = ["linear", None]
+        df_vehicles = dataframe_utils.merge_data_frames([df_weather, df_vehicles], join_method,
+                                                        use_interpolation=use_interpolation,
+                                                        index_column=index_column,
+                                                        dropna=dropna)
+        if include_weather_description:
+            df_vehicles.reset_index(inplace=True, drop=False)
+            use_interpolation = ["nearest", None]
+            df_vehicles = dataframe_utils.merge_data_frames([df_weather_categ, df_vehicles], join_method,
+                                                            use_interpolation=use_interpolation,
+                                                            index_column=index_column,
+                                                            dropna=dropna)
+    else:
+        df_vehicles.set_index(index_column, inplace=True, drop=True)
+
+    if len(df_vehicles) > 0:
+        logger.debug(f"\nA total of {len(df_vehicles)} data points were fetched.")
+        start_date = np.min(df_vehicles.index)
+        end_date = np.max(df_vehicles.index)
+        logger.debug(f"Fetched data corresponds to period with Start date = {start_date} and End date = {end_date}.")
+        logger.debug(f"Feature Names:\n{df_vehicles.columns.tolist()}")
+
+    return df_vehicles
+
+
 def fetch_features_for_vehicle_counts(filedir, include_weather=False, explore_data=False,
                                       keep_all_detected_classes=False, dropna=True,
                                       include_weather_description=True, target_files=None):
@@ -379,7 +443,7 @@ def fetch_features_for_vehicle_counts(filedir, include_weather=False, explore_da
     if target_files is None:
         target_files = [x for x in listdir(filedir) if '.csv' in x]
 
-    print(f'Reading files from directory {filedir}.')
+    logger.debug(f'Reading files from directory {filedir}.')
 
     if len(target_files) == 0:
         raise ValueError(f"No .csv label files found in directory {filedir}.")
@@ -391,15 +455,14 @@ def fetch_features_for_vehicle_counts(filedir, include_weather=False, explore_da
     detected_classes = np.unique(np.array(core_utils.flatten([list(row.keys()) for row in rows])))
 
     if explore_data:
-        print(f'Total detected classes are:\n {detected_classes}')
-        print("\n")
+        logger.info(f'Total detected classes are:\n {detected_classes}\n')
         wrong_val = 'fire hydrant'  # 'airplane'
         if wrong_val in detected_classes:
-            print(f"Incorrect predictions as '{wrong_val}':")
+            logger.info(f"Incorrect predictions as '{wrong_val}':")
             wrong_pred_tuple = [(x, y, z) for (x, y, z) in zip(rows, dates, target_files) if wrong_val in x.keys()]
             for x in wrong_pred_tuple:
                 wrong_filename = x[2].replace('.csv', '.jpg')
-                print(f"{x[1]} (File: {wrong_filename}): {x[0]}")
+                logger.info(f"{x[1]} (File: {wrong_filename}): {x[0]}")
                 plt.imshow(Image.open(pathjoin(orig_filedir, wrong_filename)))
                 plt.show()
 
@@ -408,58 +471,26 @@ def fetch_features_for_vehicle_counts(filedir, include_weather=False, explore_da
     else:
         new_rows = [rearrange_class_dict(row) for row in rows]
 
-    class_df = pd.DataFrame.from_dict(new_rows)
-    index_column = 'datetime'
-    class_df[index_column] = dates
+    df_vehicles = pd.DataFrame.from_dict(new_rows)
+    index_column = "datetime"
+    df_vehicles[index_column] = dates
 
     if explore_data and keep_all_detected_classes:
         false_classes = [x for x in detected_classes if x not in vehicle_classes if x not in street_object_classes]
-        is_false = (class_df['train'] > 0)
+        is_false = (df_vehicles['train'] > 0)
         for false_class in false_classes:
-            is_false = is_false | (class_df[false_class] > 0)
-        print(f'\nUnexpected detected classes are:\n {false_classes}')
+            is_false = is_false | (df_vehicles[false_class] > 0)
+        logger.info(f"\nUnexpected detected classes are:\n {false_classes}")
 
-        false_positives = sum(list(is_false)) / len(class_df) * 100
-        print("False positives: ", "{:.2f}".format(false_positives), "%", " in a total of ", len(class_df), " frames.")
+        false_positives = sum(list(is_false)) / len(df_vehicles) * 100
+        logger.info("False positives: ", "{:.2f}".format(false_positives), "%", " in a total of ", len(df_vehicles), " frames.")
 
     if include_weather:
-        start_date = np.min(class_df[index_column]) - timedelta(hours=3)
-        end_date = np.max(class_df[index_column])
+        start_date = np.min(df_vehicles[index_column]) - timedelta(hours=3)
+        end_date = np.max(df_vehicles[index_column])
         df_weather = prepare_weather_data(start_date, end_date, read_from_db=True)
-
-        dropped_side_cols = ['lat', 'lon', 'dt', 'timezone', 'temp_min', 'temp_max']
-        df_weather.drop(columns=dropped_side_cols, inplace=True)
-
-        weather_description_cols = ['weather', 'description', 'weather_id']
-        if include_weather_description:
-            df_weather.dropna(inplace=True)
-            weather_dict, weather_classes, df_weather = dataframe_utils.encode_categorical_values(df_weather, 'weather')
-            weather_description_dict, weather_description_classes, df_weather = dataframe_utils.encode_categorical_values(df_weather, 'description')
-            df_weather_categ = df_weather[weather_description_cols + ['datetime']]
-
-        df_weather.drop(columns=weather_description_cols, inplace=True)
-
-        join_method = 'outer'
-        use_interpolation = ['linear', None]
-        class_df = dataframe_utils.merge_data_frames([df_weather, class_df], join_method,
-                                                use_interpolation=use_interpolation,
-                                                index_column=index_column,
-                                                dropna=dropna)
-        if include_weather_description:
-            class_df.reset_index(inplace=True, drop=False)
-            use_interpolation = ['nearest', None]
-            class_df = dataframe_utils.merge_data_frames([df_weather_categ, class_df], join_method,
-                                                         use_interpolation=use_interpolation,
-                                                         index_column=index_column,
-                                                         dropna=dropna)
     else:
-        class_df.set_index(index_column, inplace=True, drop=True)
+        df_weather = None
 
-    if len(class_df) > 0:
-        print(f'\nA total of {len(class_df)} data points were fetched.')
-        start_date = np.min(class_df.index)
-        end_date = np.max(class_df.index)
-        print(f'Fetched data corresponds to period with Start date = {start_date} and End date = {end_date}.')
-        print(f'Feature Names:\n{class_df.columns.tolist()}')
-
-    return class_df
+    df_features = prepare_features_for_vehicle_counts(df_vehicles, df_weather, dropna, include_weather_description)
+    return df_features

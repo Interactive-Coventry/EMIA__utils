@@ -17,3 +17,10 @@ To cleanup the egg files:
 ```
 $ python setup.py clean     
 ```
+
+## Add package requirement: 
+In the requirements.txt add the following line: 
+
+```
+EMIA__utils @ git+https://github.com/Interactive-Coventry/EMIA__utils@v1
+```
