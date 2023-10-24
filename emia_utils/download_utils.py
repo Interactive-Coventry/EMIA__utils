@@ -23,14 +23,20 @@ GENERAL_HEADERS = {
     "Connection": "keep-alive",
 }
 
-DATAMALL_HEADERS = GENERAL_HEADERS
-DATAMALL_HEADERS.update({"AccountKey": core_utils.get_api_key("datamall.json")})
+if core_utils.settings["TOKENS"]["read_from"] == "local":
+    DATAMALL_TOKEN_KEY = core_utils.get_api_key("datamall.json")
+    OPENWEATHERMAP_TOKEN_KEY = core_utils.get_api_key("openweathermap.json")
+elif core_utils.settings["TOKENS"]["read_from"] == "secrets":
+    import streamlit as st
+    DATAMALL_TOKEN_KEY = st.secrets["tokens"]["datamall"]
+    OPENWEATHERMAP_TOKEN_KEY = st.secrets["tokens"]["openweathermap"]
 
+DATAMALL_HEADERS = GENERAL_HEADERS
+DATAMALL_HEADERS.update({"AccountKey": DATAMALL_TOKEN_KEY})
 
 DATAMALL_URI = 'http://datamall2.mytransport.sg/'
 TZ_SG = pytz.timezone('Asia/Singapore')
 
-OPENWEATHERMAP_TOKEN_KEY = core_utils.get_api_key("openweathermap.json")
 TARGET_CITY = "SINGAPORE"
 OPENWEATHERMAP_TARGET_URI = "http://api.openweathermap.org/data/2.5/weather?"
 
