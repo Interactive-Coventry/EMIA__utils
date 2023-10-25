@@ -50,7 +50,7 @@ def engine_connect():
     conn_string = f"postgresql://[{host}]:{port}/{dbname}?user={user}&password={password}"
     db = create_engine(conn_string)
     conn = db.connect()
-    logger.debug(f"Engine connect:Connecting to {conn} from secrets.")
+    logger.info(f"Engine connect:Connecting to {conn} from secrets.")
 
     return conn
 
@@ -63,7 +63,7 @@ def connect_with_psycopg2(host=None, port=None, dbname=None, user=None, password
         database=dbname,
         user=user,
         password=password)
-    logger.debug(f"Connecting to {conn} from {READ_DB_CREDENTIALS_FROM}.")
+    logger.info(f"Connecting to {conn} from {READ_DB_CREDENTIALS_FROM}.")
     return conn
 
 def connect(host=None, port=None, dbname=None, user=None, password=None):
