@@ -9,11 +9,15 @@ from libs.foxutils.utils.core_utils import settings
 
 logger = logging.getLogger("emia_utils.database_utils")
 
-def get_connection_parameters(host=None, dbname=None, user=None, password=None):
-    if settings["TOKENS"]["read_from"] == "local":
+READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"]
+
+def get_connection_parameters(host=None, port=None, dbname=None, user=None, password=None):
+    if READ_DB_CREDENTIALS_FROM == "local":
         logger.debug(f"Reading from local settings")
         if host is None:
             host = settings["DATABASE"]["host"]
+        if port is None:
+            port = settings["DATABASE"]["port"]
         if dbname is None:
             dbname = settings["DATABASE"]["dbname"]
         if user is None:
@@ -21,11 +25,13 @@ def get_connection_parameters(host=None, dbname=None, user=None, password=None):
         if password is None:
             password = settings["DATABASE"]["password"]
 
-    elif settings["TOKENS"]["read_from"] == "secrets":
+    elif READ_DB_CREDENTIALS_FROM == "secrets":
         import streamlit as st
         logger.debug(f"Reading from secrets")
         if host is None:
             host = st.secrets.connections.postgresql.host
+        if port is None:
+            port = st.secrets.connections.postgresql.port
         if dbname is None:
             dbname = st.secrets.connections.postgresql.database
         if user is None:
@@ -33,40 +39,57 @@ def get_connection_parameters(host=None, dbname=None, user=None, password=None):
         if password is None:
             password = st.secrets.connections.postgresql.password
 
-    print(f"Connecting to {host} {dbname} {user} {password}")
-    return host, dbname, user, password
+    else:
+        raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
+
+    return host, port, dbname, user, password
 
 
 def engine_connect():
-    host, dbname, user, password = get_connection_parameters()
-    conn_string = f'postgresql://{user}:{password}@{host}/{dbname}'
+    host, port, dbname, user, password = get_connection_parameters()
+    conn_string = f"postgresql://[{host}]:{port}/{dbname}?user={user}&password={password}"
     db = create_engine(conn_string)
     conn = db.connect()
+    logger.debug(f"Engine connect:Connecting to {conn} from secrets.")
+
     return conn
 
 
-def connect(host=None, dbname=None, user=None, password=None):
-    conn = None
-    try:
-        host, dbname, user, password = get_connection_parameters(host, dbname, user, password)
+def connect_with_psycopg2(host=None, port=None, dbname=None, user=None, password=None):
+    host, port, dbname, user, password = get_connection_parameters(host, port, dbname, user, password)
+    conn = psycopg2.connect(
+        host=host,
+        port=port,
+        database=dbname,
+        user=user,
+        password=password)
+    logger.debug(f"Connecting to {conn} from {READ_DB_CREDENTIALS_FROM}.")
+    return conn
 
-        conn = psycopg2.connect(
-            host=host,
-            database=dbname,
-            user=user,
-            password=password)
+def connect(host=None, port=None, dbname=None, user=None, password=None):
+    try:
+        if READ_DB_CREDENTIALS_FROM == "local":
+            conn = connect_with_psycopg2(host, port, dbname, user, password)
+
+        elif READ_DB_CREDENTIALS_FROM == "secrets":
+            #import streamlit as st
+            #conn = st.experimental_connection("postgresql", type="sql")
+            conn = connect_with_psycopg2(host, port, dbname, user, password)
+
+        else:
+            raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
 
         return conn
 
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        logger.error(error)
         return None
 
 
 def execute_commands(commands):
-    conn = None
     try:
         conn = connect()
+        logger.debug(f"Executing commands: {commands}")
         cur = conn.cursor()
         for command in commands:
             cur.execute(command)
@@ -74,7 +97,7 @@ def execute_commands(commands):
         conn.commit()
 
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        logger.error(error)
     finally:
         if conn is not None:
             conn.close()
@@ -85,17 +108,17 @@ def execute_command(command):
 
 
 def execute_command_and_do_something(command, target_function, **kwargs):
-    conn = None
     result = None
     try:
         conn = connect()
+        logger.debug(f"Executing command: {command}")
         cur = conn.cursor()
         cur.execute(command)
         result = target_function(cur, **kwargs)
         cur.close()
         conn.commit()
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        logger.error(error)
     finally:
         if conn is not None:
             conn.close()
@@ -110,17 +133,17 @@ def fetch_one(cur):
 def check_connection():
     """ Connect to the PostgreSQL database server """
     # connect to the PostgreSQL server
-    print('Connecting to the PostgreSQL database...')
+    logger.info('Connecting to the PostgreSQL database...')
 
     # execute a statement
-    print('PostgreSQL database version:')
+    logger.info('PostgreSQL database version:')
     command = 'SELECT version()'
     db_version = execute_command_and_do_something(command, fetch_one)
-    print(db_version)
+    logger.info(db_version)
 
 
 def drop_table(table_name):
-    print(f'Dropping table: {table_name}')
+    logger.info(f'Dropping table: {table_name}')
     command = f'drop table if exists {table_name}'
     execute_command(command)
 
@@ -211,8 +234,8 @@ def append_df_to_table(df, table_name, append_only_new=True):
             logger.debug('Nothing to append.')
 
     except IntegrityError as e:
-        logger.info(f"IntegrityError: {e}")
-        logger.info("Can't append, because key exists")
+        logger.error(f"IntegrityError: {e}")
+        logger.error("Can't append, because key exists")
 
 
 def get_min_max_primary_key(table_name, id_name=None):
@@ -250,6 +273,7 @@ def read_table_with_select(table_name, params=None, conn=None):
     if conn is None:
         conn = engine_connect()
 
+    logger.debug(f"Reading table with select: {command}")
     if isinstance(conn, Connection): # For SQLAlchemy
         command = text(command)
         df = pd.read_sql(command, conn)
