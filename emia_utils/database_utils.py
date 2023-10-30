@@ -161,7 +161,10 @@ def query_with_streamlit(command, conn=None):
     df = None
     if conn is None:
         conn = connect()
-    df = conn.query(command)
+    try:
+        df = conn.query(command)
+    finally:
+        conn.session.close()
     return df
 
 
@@ -169,9 +172,11 @@ def execute_command_with_streamlit(command, conn=None):
     if conn is None:
         conn = connect()
     with conn.session as s:
-        s.execute(command)
-        s.commit()
-
+        try:
+            s.execute(command)
+            s.commit()
+        finally:
+            s.close()
 
 def fetch_one(cur):
     result = cur.fetchone()
@@ -356,7 +361,8 @@ def read_table_with_select(table_name, params=None, conn=None):
     logger.debug(f"Reading table with select: {command}")
 
     if USES_STREAMLIT:
-        df = conn.query(command)
+        df = query_with_streamlit(command, conn)
+
     else:
         if conn is None:
             conn = engine_connect()
