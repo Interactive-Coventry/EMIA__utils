@@ -9,7 +9,7 @@ from libs.foxutils.utils.core_utils import settings
 
 logger = logging.getLogger("emia_utils.database_utils")
 
-READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"]
+READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"] # "local" or "secrets"
 DB_MODE = settings["DATABASE"]["db_mode"]  # "local" or "streamlit" or "firebase"
 USES_STREAMLIT = DB_MODE == "streamlit"
 USES_FIREBASE = DB_MODE == "firebase"
