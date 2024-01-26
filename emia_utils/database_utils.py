@@ -92,7 +92,7 @@ def get_connection_parameters(host=None, port=None, dbname=None, user=None, pass
 def engine_connect():
     host, port, dbname, user, password = get_connection_parameters()
     conn_string = f"postgresql://[{host}]:{port}/{dbname}?user={user}&password={password}"
-    db = create_engine(conn_string)  # , pool_pre_ping=True
+    db = create_engine(conn_string) #, pool_size=20, max_overflow=0)  # , pool_pre_ping=True
     conn = db.connect()
     logger.debug(f"Engine connect:Connecting to {conn} from secrets.")
 
@@ -119,6 +119,7 @@ def connect(host=None, port=None, dbname=None, user=None, password=None):
         elif USES_STREAMLIT:
             import streamlit as st
             conn = st.experimental_connection("postgresql", type="sql")
+            logger.debug(f"Streamlit connect: Connecting to {conn} from secrets.")
 
         else:
             raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
@@ -161,10 +162,15 @@ def query_with_streamlit(command, conn=None):
     df = None
     if conn is None:
         conn = connect()
-    try:
-        df = conn.query(command)
-    finally:
-        conn.session.close()
+    with conn.session as s:
+        try:
+            #df = s.query(text(command))
+            df = pd.read_sql(command, s.bind)
+
+        finally:
+            logger.debug(f"Streamlit: Clossing {conn}.")
+            s.close()
+
     return df
 
 
@@ -176,6 +182,7 @@ def execute_command_with_streamlit(command, conn=None):
             s.execute(command)
             s.commit()
         finally:
+            logger.debug(f"Streamlit: Clossing {conn}.")
             s.close()
 
 def fetch_one(cur):
