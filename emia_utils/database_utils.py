@@ -118,8 +118,7 @@ def connect(host=None, port=None, dbname=None, user=None, password=None):
 
         elif USES_STREAMLIT:
             import streamlit as st
-            conn = st.experimental_connection("postgresql", type="sql")
-            logger.debug(f"Streamlit connect: Connecting to {conn} from secrets.")
+            conn = st.connection("postgresql", type="sql")
 
         else:
             raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
@@ -168,7 +167,6 @@ def query_with_streamlit(command, conn=None):
             df = pd.read_sql(command, s.bind)
 
         finally:
-            logger.debug(f"Streamlit: Clossing {conn}.")
             s.close()
 
     return df
@@ -182,7 +180,6 @@ def execute_command_with_streamlit(command, conn=None):
             s.execute(command)
             s.commit()
         finally:
-            logger.debug(f"Streamlit: Clossing {conn}.")
             s.close()
 
 def fetch_one(cur):
