@@ -24,18 +24,17 @@ from pathlib import Path
 import os
 import time
 import torch.backends.cudnn as cudnn
-from models.experimental import attempt_load
 import cv2
-from yolov7.utils.datasets import LoadStreams, LoadImages, LoadImages_2
-from yolov7.utils.general import check_img_size, check_requirements, check_imshow, \
+
+from libs.yolov7.models.experimental import attempt_load
+from libs.yolov7.utils.datasets import LoadStreams, LoadImages, LoadImages_2, letterbox
+from libs.yolov7.utils.general import check_img_size, check_requirements, check_imshow, \
     non_max_suppression, apply_classifier, scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path
-from yolov7.utils.plots import plot_one_box
-from yolov7.utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
+from libs.yolov7.utils.plots import plot_one_box
+from libs.yolov7.utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
 
-os.system('git clone https://github.com/WongKinYiu/yolov7')
-os.system('wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7.pt')
-
-
+#os.system('git clone https://github.com/WongKinYiu/yolov7')
+#os.system('wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7.pt')
 # os.system('wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-mask.pt')
 
 def LoadModel(options, device, half, classify=False):
