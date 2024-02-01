@@ -38,8 +38,8 @@ os.system('wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolo
 
 # os.system('wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-mask.pt')
 
-def LoadModel(options, device, classify=False):
-    half = device.type != 'cpu'
+def LoadModel(options, device, half, classify=False):
+    logger.info(f"Load from {options.weights}")
     model = attempt_load(options.weights, map_location=device)
     stride = int(model.stride.max())
     _ = check_img_size(options.img_size, s=stride)
@@ -49,8 +49,8 @@ def LoadModel(options, device, classify=False):
         model.half()
 
     if classify:
-        modelc = load_classifier(name='resnet101', n=2)  # initialize
-        modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=device)['model']).to(device).eval()
+        modelc = load_classifier(name="resnet101", n=2)  # initialize
+        modelc.load_state_dict(torch.load("weights/resnet101.pt", map_location=device)["model"]).to(device).eval()
     else:
         modelc = None
 
@@ -253,3 +253,103 @@ def detect_objects(dataset_dir, keep_all_detected_classes=True, file_list=None, 
 
     return class_df
 
+
+################################################
+
+class InParams:
+    def __init__(self, d=None):
+        if d is not None:
+            for key, value in d.items():
+                setattr(self, key, value)
+
+
+def load_object_detection_model(save_img=True, save_txt=True, device="cuda"):
+    classify = False
+    if device == "cuda" or device == "gpu":
+        device = select_device("0")
+        half = device.type != "cpu"
+    elif device == "cpu":
+        half = False
+    else:
+        half = True
+
+    opt = InParams(dict(agnostic_nms=False,
+                        augment=False,
+                        classes=None,
+                        conf_thres=0.25,
+                        device=device,
+                        exist_ok=True,
+                        img_size=640,
+                        iou_thres=0.45,
+                        name="exp",
+                        nosave=False,
+                        project="runs/detect",
+                        save_conf=False,
+                        save_txt=save_txt,
+                        source="",
+                        trace=False,
+                        update=False,
+                        view_img=False,
+                        save_img=save_img,
+                        save_dir="",
+                        classify=classify,
+                        half=half,
+                        stride=0,
+                        names=[],
+                        colors=[],
+                        weights=YOLO_MODEL + ".pt"))
+
+    save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
+    (save_dir / "labels" if save_txt else save_dir).mkdir(parents=True, exist_ok=True)
+    opt.save_dir = save_dir
+
+    model, stride, modelc = LoadModel(opt, device, half, classify)
+    opt.stride = stride
+    logger.info(f"New object detection model loaded from Yolov7 on device {device}. Model type {type(model)}.\n")
+
+    opt.names = model.module.names if hasattr(model, "module") else model.names
+    opt.colors = [[random.randint(0, 255) for _ in range(3)] for _ in opt.names]
+    if opt.half:
+        model(torch.zeros(1, 3, opt.img_size, opt.img_size).to(opt.device).type_as(next(model.parameters())))
+
+    return model, opt
+
+
+def detect_from_image(img, od_model, od_opt, device):
+    names = od_opt.names
+    colors = od_opt.colors
+
+    # Padded resize
+    od_img = letterbox(img, od_opt.img_size, od_opt.stride)[0]
+    # Convert
+    od_img = od_img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
+    od_img = np.ascontiguousarray(od_img)
+    od_img = torch.from_numpy(od_img).to(device)
+    od_img = od_img.half() if od_opt.half else od_img.float()
+    od_img /= 255.0
+    if od_img.ndimension() == 3:
+        od_img = od_img.unsqueeze(0)
+
+    with torch.no_grad():
+        #temporarily disable gradient calculation.
+        #This is particularly useful when you're performing inference and can lead to faster and more memory-efficient computations.
+        od_pred = od_model(od_img, augment=od_opt.augment)[0]
+        od_pred = non_max_suppression(od_pred, od_opt.conf_thres, od_opt.iou_thres, classes=od_opt.classes,
+                                      agnostic=od_opt.agnostic_nms)
+
+    od_dict = {}
+
+    for i, det in enumerate(od_pred):
+        if len(det):
+            det[:, :4] = scale_coords(od_img.shape[2:], det[:, :4], img.shape).round()
+            for c in det[:, -1].unique():
+                n = (det[:, -1] == c).sum()
+                od_dict[names[int(c)]] = int(n)
+
+            for *xyxy, conf, cls in reversed(det):
+                label = f"{names[int(cls)]} {conf:.2f}"
+                plot_one_box(xyxy, img, label=label, color=colors[int(cls)], line_thickness=2)
+
+    od_img = Image.fromarray(img[:, :, ::-1])
+
+    return od_img, od_dict
