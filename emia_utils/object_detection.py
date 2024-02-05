@@ -37,6 +37,9 @@ from libs.yolov7.utils.torch_utils import select_device, load_classifier, time_s
 #os.system('wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7.pt')
 # os.system('wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-mask.pt')
 
+WEIGHTS_DIR = pathjoin(core_utils.models_dir , "yolov7", "weights")
+YOLO_MODEL = pathjoin(WEIGHTS_DIR, "yolov7_training")
+
 def LoadModel(options, device, half, classify=False):
     logger.info(f"Load from {options.weights}")
     model = attempt_load(options.weights, map_location=device)
