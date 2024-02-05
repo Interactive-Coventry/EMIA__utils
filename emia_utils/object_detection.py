@@ -318,3 +318,8 @@ def detect_from_directory(dataset_dir, return_results=False, keep_all_detected_c
         return filedir
 
 
+def detect_from_video(model, opt, stream_link):
+    opt.save_img = False
+    with torch.no_grad():  # to avoid OOM
+        _ = detect(model, opt, image_source=stream_link)
+    return
