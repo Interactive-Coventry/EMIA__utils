@@ -28,7 +28,7 @@ def embed_image(model, input_imgs):
 def detect_objects(dataset_dir, keep_all_detected_classes=True, file_list=None):
     print(f'Reading images from {dataset_dir}')
     with torch.no_grad():  # to avoid OOM
-        _ = object_detection.Custom_detect(image_source=dataset_dir, file_list=file_list)
+        _ = object_detection.detect_command(image_source=dataset_dir, file_list=file_list)
     folder = pathjoin(core_utils.get_base_path(), core_utils.project_name, "runs", "detect")
     exp_folder = natsorted(listdir(folder))[-1]
     print(f"Detection results are saved at {exp_folder}")
