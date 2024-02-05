@@ -28,6 +28,17 @@ def init_firebase():
     db = firestore.Client(credentials=creds, project=FIREBASE_PROJECT_NAME)
     return db
 
+def init_connection(): # For psycopg2 connections
+    import socket
+    hostname = socket.gethostname()
+    IPAddr = socket.gethostbyname(hostname)
+    logger.info(f"Your Computer Name is: {hostname}")
+    logger.info(f"Your Computer IP Address is:{IPAddr}")
+
+    conn_ = connect()
+    logger.debug(f"The type of connection is {type(conn_)}")
+    check_connection(conn_)
+    return conn_
 
 def collection_reference_to_dataframe(db_collection, is_list=False):
     if not is_list:
