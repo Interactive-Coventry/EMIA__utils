@@ -30,14 +30,6 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 # os.system('wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-mask.pt')
 
 
-def read_classes_from_csv_file(filedir, target_file):
-    class_dict = {}
-    with open(pathjoin(filedir, target_file), 'r', newline='', encoding='utf-8') as csvfile:
-        for line in csv.reader(csvfile):
-            class_dict[line[0]] = int(line[1])
-    return class_dict
-
-
 def detect_from_directory(dataset_dir, return_results=False, keep_all_detected_classes=True, file_list=None, delete_previous=True):
 
     logger.info(f'Running on {core_utils.device}.')
