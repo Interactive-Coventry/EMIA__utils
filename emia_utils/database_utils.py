@@ -118,7 +118,7 @@ def connect_with_psycopg2(host=None, port=None, dbname=None, user=None, password
         database=dbname,
         user=user,
         password=password)
-    logger.info(f"Connecting to {conn} from {READ_DB_CREDENTIALS_FROM}.")
+    logger.debug(f"Connecting to {conn} from {READ_DB_CREDENTIALS_FROM}.")
     return conn
 
 
