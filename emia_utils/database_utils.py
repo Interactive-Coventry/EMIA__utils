@@ -131,7 +131,7 @@ def connect(host=None, port=None, dbname=None, user=None, password=None):
 
 
 def execute_commands(commands, target_function=None, **kwargs):
-    results = None
+    results = []
     try:
         conn = connect()
         cur = conn.cursor()
@@ -140,6 +140,8 @@ def execute_commands(commands, target_function=None, **kwargs):
             cur.execute(command)
             if target_function is not None:
                 result = target_function(cur, **kwargs)
+                if isinstance(result, tuple):
+                    result = list(result)
                 results.append(result)
         cur.close()
         conn.commit()
