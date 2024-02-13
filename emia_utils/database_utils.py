@@ -129,8 +129,10 @@ def connect(host=None, port=None, dbname=None, user=None, password=None):
 
         elif USES_STREAMLIT:
             import streamlit as st
-            conn = st.connection("postgresql", type="sql")
-
+            try:
+                conn = st.connection("postgresql", type="sql")
+            except AttributeError as e:
+                conn = st.experimental_connection("postgresql", type="sql")
         else:
             raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
 
