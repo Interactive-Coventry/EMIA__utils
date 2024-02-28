@@ -323,7 +323,7 @@ def replace_df_to_table(df, table_name, conn=None):
         set_primary_key_from_df(df, table_name)
 
 
-def append_df_to_table(df, table_name, append_only_new=True, conn=None):
+def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_index=True):
     try:
         if append_only_new:
             index = df.index.name
@@ -335,11 +335,11 @@ def append_df_to_table(df, table_name, append_only_new=True, conn=None):
 
         if len(df) > 0:
             if USES_STREAMLIT:
-                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50)
+                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50, index=append_index)
                 logger.debug(f"Streamlit connect: appended {len(df)}")
                 set_primary_key_from_df(df, table_name, conn)
             else:
-                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50)
+                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50, index=append_index)
                 set_primary_key_from_df(df, table_name)
             logger.debug(f"Appended values outside current bounds only (Total new values: {len(df)}).")
 
@@ -349,6 +349,8 @@ def append_df_to_table(df, table_name, append_only_new=True, conn=None):
     except IntegrityError as e:
         logger.debug(f"IntegrityError: {e}")
         logger.error("Can't append, because key exists")
+    except ProgrammingError as e:
+        logger.debug(f"ProgrammingError: {e}")
 
 
 def get_min_max_primary_key(table_name, id_name=None, conn=None):
