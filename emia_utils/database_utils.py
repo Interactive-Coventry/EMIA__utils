@@ -2,14 +2,14 @@ import logging
 
 import psycopg2
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.engine.base import Connection
 import pandas as pd
 from libs.foxutils.utils.core_utils import settings
 
 logger = logging.getLogger("emia_utils.database_utils")
 
-READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"] # "local" or "secrets"
+READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"]  # "local" or "secrets"
 DB_MODE = settings["DATABASE"]["db_mode"]  # "local" or "streamlit" or "firebase"
 USES_STREAMLIT = DB_MODE == "streamlit"
 USES_FIREBASE = DB_MODE == "firebase"
@@ -28,7 +28,8 @@ def init_firebase():
     db = firestore.Client(credentials=creds, project=FIREBASE_PROJECT_NAME)
     return db
 
-def init_connection(): # For psycopg2 connections
+
+def init_connection():  # For psycopg2 connections
     import socket
     hostname = socket.gethostname()
     IPAddr = socket.gethostbyname(hostname)
@@ -39,6 +40,7 @@ def init_connection(): # For psycopg2 connections
     logger.debug(f"The type of connection is {type(conn_)}")
     check_connection(conn_)
     return conn_
+
 
 def collection_reference_to_dataframe(db_collection, is_list=False):
     if not is_list:
@@ -63,7 +65,6 @@ def insert_row_to_firebase(db, row_dict, table_name, id_name=None):
         else:
             db.collection(table_name).document(document_id).set(row_dict)
             logger.debug(f"Added document with id {document_id} to {table_name}.")
-
 
 
 def get_connection_parameters(host=None, port=None, dbname=None, user=None, password=None):
@@ -103,7 +104,7 @@ def get_connection_parameters(host=None, port=None, dbname=None, user=None, pass
 def engine_connect():
     host, port, dbname, user, password = get_connection_parameters()
     conn_string = f"postgresql://[{host}]:{port}/{dbname}?user={user}&password={password}"
-    db = create_engine(conn_string) #, pool_size=20, max_overflow=0)  # , pool_pre_ping=True
+    db = create_engine(conn_string)  # , pool_size=20, max_overflow=0)  # , pool_pre_ping=True
     conn = db.connect()
     logger.debug(f"Engine connect:Connecting to {conn} from secrets.")
 
@@ -178,7 +179,7 @@ def query_with_streamlit(command, conn=None):
         conn = connect()
     with conn.session as s:
         try:
-            #df = s.query(text(command))
+            # df = s.query(text(command))
             df = pd.read_sql(command, s.bind)
 
         finally:
@@ -196,6 +197,7 @@ def execute_command_with_streamlit(command, conn=None):
             s.commit()
         finally:
             s.close()
+
 
 def fetch_one(cur):
     result = cur.fetchone()
@@ -328,20 +330,23 @@ def replace_df_to_table(df, table_name, conn=None):
 def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_index=True):
     try:
         if append_only_new:
-            index = df.index.name
-            db_start_index, db_end_index = get_min_max_primary_key(table_name, index, conn)
-            if db_start_index is not None and db_end_index is not None:
-                logger.debug(
-                    f"Table [{table_name}] with index [{index}] has start index {db_start_index} and end index {db_end_index}.")
-                df = df.loc[(df.index.to_pydatetime() < db_start_index) | (df.index.to_pydatetime() > db_end_index)]
+            if append_index:
+                index = df.index.name
+                db_start_index, db_end_index = get_min_max_primary_key(table_name, index, conn)
+                if db_start_index is not None and db_end_index is not None:
+                    logger.debug(
+                        f"Table [{table_name}] with index [{index}] has start index {db_start_index} and end index {db_end_index}.")
+                    df = df.loc[(df.index.to_pydatetime() < db_start_index) | (df.index.to_pydatetime() > db_end_index)]
 
         if len(df) > 0:
             if USES_STREAMLIT:
-                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50, index=append_index)
+                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50,
+                          index=append_index)
                 logger.debug(f"Streamlit connect: appended {len(df)}")
                 set_primary_key_from_df(df, table_name, conn)
             else:
-                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50, index=append_index)
+                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50,
+                          index=append_index)
                 set_primary_key_from_df(df, table_name)
             logger.debug(f"Appended values outside current bounds only (Total new values: {len(df)}).")
 
@@ -351,8 +356,10 @@ def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_i
     except IntegrityError as e:
         logger.debug(f"IntegrityError: {e}")
         logger.error("Can't append, because key exists")
+
     except ProgrammingError as e:
         logger.debug(f"ProgrammingError: {e}")
+        logger.debug("Permission denied for sequence dashcams_event_id_seq")
 
 
 def get_min_max_primary_key(table_name, id_name=None, conn=None):
