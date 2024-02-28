@@ -224,12 +224,27 @@ def drop_table(table_name):
     execute_command(command)
 
 
+def create_dashcams_table():
+    commands = (
+        """
+        CREATE TABLE dashcams (
+            event_id SERIAL PRIMARY KEY,
+            camera_id VARCHAR(50) NOT NULL,
+            lat REAL,
+            lng REAL,
+            datetime TIMESTAMP WITHOUT TIME ZONE
+        );
+        """,
+    )
+    execute_commands(commands)
+
+
 def create_vehicle_count_table():
     commands = (
         """
         CREATE TABLE vehicle_counts (
             datetime TIMESTAMP WITHOUT TIME ZONE,
-            camera_id VARCHAR(20),
+            camera_id VARCHAR(50),
             total_pedestrians INT4,
             total_vehicles INT4,
             bicycle INT4,
