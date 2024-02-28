@@ -238,6 +238,7 @@ def create_dashcams_table():
         );
         
         GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO elena;
+        GRANT ALL PRIVILEGES ON TABLE dashcams TO elena;
         """,
     )
     execute_commands(commands)
