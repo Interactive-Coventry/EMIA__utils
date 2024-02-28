@@ -234,6 +234,8 @@ def create_dashcams_table():
             lng REAL,
             datetime TIMESTAMP WITHOUT TIME ZONE
         );
+        
+        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO elena;
         """,
     )
     execute_commands(commands)
