@@ -193,7 +193,7 @@ def execute_command_with_streamlit(command, conn=None):
         conn = connect()
     with conn.session as s:
         try:
-            s.execute(command)
+            s.execute(text(command))
             s.commit()
         finally:
             s.close()
@@ -230,11 +230,11 @@ def create_dashcams_table():
     commands = (
         """
         CREATE TABLE dashcams (
-            event_id SERIAL PRIMARY KEY,
+            datetime TIMESTAMP WITHOUT TIME ZONE,
             camera_id VARCHAR(50) NOT NULL,
             lat REAL,
             lng REAL,
-            datetime TIMESTAMP WITHOUT TIME ZONE
+            PRIMARY KEY (datetime, camera_id)
         );
         
         GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO elena;
