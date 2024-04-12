@@ -11,7 +11,6 @@ logger = logging.getLogger("emia_utils.database_utils")
 
 READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"]  # "local" or "secrets"
 DB_MODE = settings["DATABASE"]["db_mode"]  # "local" or "streamlit" or "firebase"
-READ_DB_MODE = settings["DATABASE"]["read_db_mode"]  # "sqlalchemy" or "psycopg2"
 USES_STREAMLIT = DB_MODE == "streamlit"
 USES_FIREBASE = DB_MODE == "firebase"
 
