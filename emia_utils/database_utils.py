@@ -11,9 +11,12 @@ logger = logging.getLogger("emia_utils.database_utils")
 
 READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"]  # "local" or "secrets"
 DB_MODE = settings["DATABASE"]["db_mode"]  # "local" or "streamlit" or "firebase"
+READ_DB_MODE = settings["DATABASE"]["read_db_mode"]  # "sqlalchemy" or "psycopg2"
 USES_STREAMLIT = DB_MODE == "streamlit"
 USES_FIREBASE = DB_MODE == "firebase"
 
+logger.debug(f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}\nUSES_STREAMLIT: {USES_STREAMLIT}\n"
+             f"USES_FIREBASE: {USES_FIREBASE}")
 
 def init_firebase():
     import firebase_admin
@@ -397,7 +400,7 @@ def enclose_in_quotes(input_str):
     return output_str
 
 
-def read_table_with_select(table_name, params=None, conn=None):
+def read_table_with_select(table_name, params=None, conn=None, convert_to_text=True):
     command = f"SELECT * FROM {table_name} "
     if len(params) > 0:
         where_clause = "WHERE "
@@ -413,7 +416,8 @@ def read_table_with_select(table_name, params=None, conn=None):
         if conn is None:
             conn = engine_connect()
         # if isinstance(conn, Connection):  # For SQLAlchemy
-        command = text(command)
+        if convert_to_text:
+            command = text(command)
         df = pd.read_sql(command, conn)
     return df
 
