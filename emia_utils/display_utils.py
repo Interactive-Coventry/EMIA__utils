@@ -2,13 +2,9 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd
 import numpy as np
-from statsmodels.graphics.tsaplots import plot_predict
 from PIL import ImageDraw, ImageFont
 
 from .process_utils import get_bus_arrival_index, exponential_smoothing, double_exponential_smoothing, edit_bus_arrivals
-
-import statsmodels.tsa.api as smt
-import statsmodels.api as sm
 
 
 def plot_current_time_vs_diff(df):
@@ -160,6 +156,8 @@ def plot_double_exponential_smoothing(xvals, yvals, alphas, betas):
 
 
 def tsplot(y, lags=None, figsize=(12, 7), syle='bmh'):
+    import statsmodels.tsa.api as smt
+
     if not isinstance(y, pd.Series):
         y = pd.Series(y)
 
@@ -179,6 +177,8 @@ def tsplot(y, lags=None, figsize=(12, 7), syle='bmh'):
 
 
 def plot_seasonal_decomposition(yvals, period):
+    import statsmodels.api as sm
+
     seas_d = sm.tsa.seasonal_decompose(yvals, model='add', period=period)
     fig = seas_d.plot()
     fig.set_figheight(4)
@@ -186,6 +186,7 @@ def plot_seasonal_decomposition(yvals, period):
 
 
 def plot_predict_model(yvals, model, pred_length):
+    from statsmodels.graphics.tsaplots import plot_predict
     # plot_predict(model, dynamic=False)
     fig, ax = plt.subplots()
     ax = yvals.plot(ax=ax)
