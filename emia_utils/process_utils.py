@@ -494,3 +494,46 @@ def fetch_features_for_vehicle_counts(filedir, include_weather=False, explore_da
 
     df_features = prepare_features_for_vehicle_counts(df_vehicles, df_weather, dropna, include_weather_description)
     return df_features
+
+
+def distance(point1, point2, metric="euclidean"):
+    x1, y1 = point1
+    x2, y2 = point2
+    if metric == "euclidean":
+        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    else:
+        throw(ValueError("Invalid distance metric type."))
+
+
+def group_points_by_distance(df, threshold=0.001, latitude_column="lat", longitude_column="lng"):
+    groups = np.zeros(len(df))
+    coordinates = [(x, y) for (x, y) in zip(df[latitude_column], df[longitude_column])]
+
+    i = 0
+    c = 1
+    origin = coordinates[i]
+    groups[i] = c
+    i += 1
+    while i < len(df):
+        point = coordinates[i]
+        d = distance(origin, point)
+        if d < threshold:
+            groups[i] = c
+        else:
+            c += 1
+            groups[i] = c
+            origin = coordinates[i]
+
+        i += 1
+    df["group"] = groups
+    return df
+
+def get_grouped_data(df, threshold=0.001):
+    df = group_points_by_distance(df, threshold)
+    total_groups = max(df["group"])
+    logger.debug(f"Total groups: {int(total_groups)}")
+    grouped_means = df.reset_index().drop(columns=["camera_id"]).groupby("group").mean()
+    #grouped_means["group"] = grouped_means.index
+    #print(grouped_means.head())
+    #grouped_means.plot("datetime", ["total_vehicles", "total_pedestrians"], figsize=(20, 5))
+    return grouped
