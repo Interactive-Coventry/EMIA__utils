@@ -1,6 +1,6 @@
 from .process_utils import *
 from libs.foxutils.utils import core_utils
-from libs.foxutils.tools.object_detection import detect_command
+from libs.tools.object_detection import detect_command
 from os.path import join as pathjoin
 from os.path import sep, exists
 import shutil
@@ -17,7 +17,7 @@ import torch.backends.cudnn as cudnn
 import cv2
 
 from libs.yolov7.models.experimental import attempt_load
-from libs.yolov7.general import clean_str
+from libs.yolov7.utils.general import clean_str
 from libs.yolov7.utils.datasets import LoadImages, LoadImages_2, letterbox
 from libs.yolov7.utils.general import check_img_size, check_requirements, check_imshow, \
     non_max_suppression, apply_classifier, scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path
