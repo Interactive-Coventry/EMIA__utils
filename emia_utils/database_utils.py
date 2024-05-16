@@ -44,6 +44,13 @@ def init_connection():  # For psycopg2 connections
     return conn_
 
 
+def cleanup_firebase_with_where(db, table_name = "vehicle_counts", where_clause = ["camera_id", ">=", "2024-03"]):
+    col_ref = db.collection(table_name) \
+        .where(**where_clause)
+    for doc in col_ref.stream():
+        doc.reference.delete()
+
+
 def collection_reference_to_dataframe(db_collection, is_list=False):
     if not is_list:
         table = list(db_collection.stream())
