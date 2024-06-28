@@ -1,14 +1,13 @@
 from libs.foxutils.utils.data_generators import multiple_point_window_generator, single_step_window_generator, \
     conv_window_generator, multiple_point_conv_window_generator, multi_step_window_generator
 from libs.foxutils.utils.keras_models import run_single_step_model, run_multi_step_model
-from libs.foxutils.utils import train_functionalities, arima_models
+from libs.foxutils.utils import train_functionalities
 
 from . import display_utils
 import numpy as np
 import pandas as pd
 import warnings
 
-from statsmodels.tools.sm_exceptions import ConvergenceWarning
 
 SEED = 42
 BATCH_SIZE = 32
@@ -332,6 +331,9 @@ def run_all_multi_step_prediction_models(train_df, val_df, test_df, target_colum
 
 def run_multiple_arima_models(df_train, df_test, pred_length, has_optimization=False, has_reverse=False,
                               orig_df_train=None, orig_df_test=None):
+    from libs.foxutils.utils import arima_models
+    from statsmodels.tools.sm_exceptions import ConvergenceWarning
+
     target_vals = df_train
 
     with warnings.catch_warnings():
