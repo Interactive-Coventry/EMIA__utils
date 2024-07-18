@@ -17,6 +17,7 @@ USES_FIREBASE = DB_MODE == "firebase"
 logger.debug(f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}\nUSES_STREAMLIT: {USES_STREAMLIT}\n"
              f"USES_FIREBASE: {USES_FIREBASE}")
 
+
 def init_firebase():
     import firebase_admin
     from firebase_admin import credentials
@@ -44,13 +45,6 @@ def init_connection():  # For psycopg2 connections
     return conn_
 
 
-def cleanup_firebase_with_where(db, table_name = "vehicle_counts", where_clause = ["camera_id", ">=", "2024-03"]):
-    col_ref = db.collection(table_name) \
-        .where(**where_clause)
-    for doc in col_ref.stream():
-        doc.reference.delete()
-
-
 def collection_reference_to_dataframe(db_collection, is_list=False):
     if not is_list:
         table = list(db_collection.stream())
@@ -66,7 +60,13 @@ def insert_row_to_firebase(db, row_dict, table_name, id_name=None):
         update_time, added_ref = db.collection(table_name).add(row_dict)
         logger.debug(f"Added document with id {added_ref.id} to {table_name} at {update_time}.")
     else:
-        document_id = row_dict[id_name]
+        if isinstance(id_name, list):
+            document_id = f"{id_name['datetime']}"
+            for x in id_name[1:]:
+                document_id += f"_{row_dict[x]}"
+        else:
+            document_id = str(row_dict[id_name])
+
         doc_ref = db.collection(table_name).document(document_id)
         doc = doc_ref.get()
         if doc.exists:
@@ -245,7 +245,7 @@ def create_dashcams_table():
             lng REAL,
             PRIMARY KEY (datetime, camera_id)
         );
-        
+
         GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO elena;
         GRANT ALL PRIVILEGES ON TABLE dashcams TO elena;
         """,
@@ -407,25 +407,46 @@ def enclose_in_quotes(input_str):
 
 
 def read_table_with_select(table_name, params=None, conn=None, convert_to_text=True):
-    command = f"SELECT * FROM {table_name} "
-    if len(params) > 0:
-        where_clause = "WHERE "
-        command = command + where_clause
-        for vals in params:
-            command = command + ' '.join(vals) + ' '
-    logger.debug(f"Reading table with select: {command}")
+    if USES_FIREBASE:
+        from google.cloud.firestore_v1 import FieldFilter
 
-    if USES_STREAMLIT:
-        df = query_with_streamlit(command, conn)
+        if not isinstance(params, dict):
+            raise ValueError("Params must be a dictionary for Firebase.")
+        data = conn.collection(table_name)
+        if "where" in params.keys():
+            for clause in params["where"]:
+                data = data.where(filter=FieldFilter(*clause))
+
+        if "order_by" in params.keys():
+            data = data.order_by(params["order_by"][0], direction=params["order_by"][1])
+
+        if "limit" in params.keys():
+            data = data.limit_to_last(params["limit"])
+
+        data = data.get()
+        df = collection_reference_to_dataframe(data, is_list=True)
+        return df
 
     else:
-        if conn is None:
-            conn = engine_connect()
-        # if isinstance(conn, Connection):  # For SQLAlchemy
-        if convert_to_text:
-            command = text(command)
-        df = pd.read_sql(command, conn)
-    return df
+        command = f"SELECT * FROM {table_name} "
+        if len(params) > 0:
+            where_clause = "WHERE "
+            command = command + where_clause
+            for vals in params:
+                command = command + ' '.join(vals) + ' '
+        logger.debug(f"Reading table with select: {command}")
+
+        if USES_STREAMLIT:
+            df = query_with_streamlit(command, conn)
+
+        else:
+            if conn is None:
+                conn = engine_connect()
+            # if isinstance(conn, Connection):  # For SQLAlchemy
+            if convert_to_text:
+                command = text(command)
+            df = pd.read_sql(command, conn)
+        return df
 
 
 if __name__ == "__main__":
