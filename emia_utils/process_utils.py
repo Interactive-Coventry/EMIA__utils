@@ -27,7 +27,6 @@ datamall_folder = "datamall"
 logger = logging.getLogger("emia_utils.process_utils")
 
 
-
 def minute_rounder(t):
     return t.replace(second=0, microsecond=0, minute=t.minute, hour=t.hour) + timedelta(minutes=t.second // 30)
 
@@ -139,9 +138,10 @@ def read_csv_data_as_dataframe(start_date, end_date, target_path, target_columns
 
     return df1
 
+
 def make_vehicle_counts_df(values):
-    target_columns = { "datetime", "camera_id", "total_pedestrians", "total_vehicles", "bicycle",
-                       "bus", "motorcycle", "person", "truck", "car" }
+    target_columns = {"datetime", "camera_id", "total_pedestrians", "total_vehicles", "bicycle",
+                      "bus", "motorcycle", "person", "truck", "car"}
     keys_to_drop = [x for x in values.keys() if x not in target_columns]
     [values.pop(x) for x in keys_to_drop]
     [values.update({x: 0}) for x in target_columns if x not in values.keys()]
@@ -393,7 +393,8 @@ def rearrange_class_dict(class_dict, target_classes=None):
 
 
 def prepare_features_for_vehicle_counts(df_vehicles, df_weather=None, dropna=True,
-                                      include_weather_description=True ):
+                                        include_weather_description=True, weather_dict=None,
+                                        weather_description_dict=None):
     index_column = "datetime"
 
     if df_weather is not None:
@@ -403,8 +404,16 @@ def prepare_features_for_vehicle_counts(df_vehicles, df_weather=None, dropna=Tru
         weather_description_cols = ["weather", "description", "weather_id"]
         if include_weather_description:
             df_weather.dropna(inplace=True)
-            weather_dict, weather_classes, df_weather = dataframe_utils.encode_categorical_values(df_weather, "weather")
-            weather_description_dict, weather_description_classes, df_weather = dataframe_utils.encode_categorical_values(df_weather, 'description')
+
+            # HOTFIX for mist
+            df_weather["weather"] = ["Clouds" if x not in weather_dict.keys() else x for x in df_weather["weather"]]
+            df_weather["description"] = ["broken clouds" if x not in weather_description_dict.keys() else x for x in
+                                         df_weather["description"]]
+
+            weather_dict, weather_classes, df_weather = dataframe_utils.encode_categorical_values(df_weather, "weather",
+                                                                                                  weather_dict)
+            weather_description_dict, weather_description_classes, df_weather = dataframe_utils.encode_categorical_values(
+                df_weather, 'description', weather_description_dict)
             df_weather_categ = df_weather[weather_description_cols + [index_column]]
 
         df_weather.drop(columns=weather_description_cols, inplace=True)
@@ -415,9 +424,13 @@ def prepare_features_for_vehicle_counts(df_vehicles, df_weather=None, dropna=Tru
                                                         use_interpolation=use_interpolation,
                                                         index_column=index_column,
                                                         dropna=dropna)
+
         if include_weather_description:
             df_vehicles.reset_index(inplace=True, drop=False)
             use_interpolation = ["nearest", None]
+            df_weather_categ.loc[:, ["weather", "description"]] = df_weather_categ[["weather", "description"]].apply(
+                pd.to_numeric, errors='coerce')
+
             df_vehicles = dataframe_utils.merge_data_frames([df_weather_categ, df_vehicles], join_method,
                                                             use_interpolation=use_interpolation,
                                                             index_column=index_column,
@@ -483,7 +496,8 @@ def fetch_features_for_vehicle_counts(filedir, include_weather=False, explore_da
         logger.info(f"\nUnexpected detected classes are:\n {false_classes}")
 
         false_positives = sum(list(is_false)) / len(df_vehicles) * 100
-        logger.info("False positives: ", "{:.2f}".format(false_positives), "%", " in a total of ", len(df_vehicles), " frames.")
+        logger.info("False positives: ", "{:.2f}".format(false_positives), "%", " in a total of ", len(df_vehicles),
+                    " frames.")
 
     if include_weather:
         start_date = np.min(df_vehicles[index_column]) - timedelta(hours=3)
@@ -528,12 +542,13 @@ def group_points_by_distance(df, threshold=0.001, latitude_column="lat", longitu
     df["group"] = groups
     return df
 
+
 def get_grouped_data(df, threshold=0.001):
     df = group_points_by_distance(df, threshold)
     total_groups = max(df["group"])
     logger.debug(f"Total groups: {int(total_groups)}")
     grouped_means = df.reset_index().drop(columns=["camera_id"]).groupby("group").mean()
-    #grouped_means["group"] = grouped_means.index
-    #print(grouped_means.head())
-    #grouped_means.plot("datetime", ["total_vehicles", "total_pedestrians"], figsize=(20, 5))
+    # grouped_means["group"] = grouped_means.index
+    # print(grouped_means.head())
+    # grouped_means.plot("datetime", ["total_vehicles", "total_pedestrians"], figsize=(20, 5))
     return grouped

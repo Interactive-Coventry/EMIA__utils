@@ -36,11 +36,11 @@ def init_connection():  # For psycopg2 connections
     import socket
     hostname = socket.gethostname()
     IPAddr = socket.gethostbyname(hostname)
-    logger.info(f"Your Computer Name is: {hostname}")
-    logger.info(f"Your Computer IP Address is:{IPAddr}")
+    logger.info(f"Your Computer Name is: {hostname} and IP Address is:{IPAddr}")
 
     conn_ = connect()
     logger.debug(f"The type of connection is {type(conn_)}")
+    logger.info(f"DB connection is {conn_}")
     check_connection(conn_)
     return conn_
 
@@ -61,11 +61,14 @@ def insert_row_to_firebase(db, row_dict, table_name, id_name=None):
         logger.debug(f"Added document with id {added_ref.id} to {table_name} at {update_time}.")
     else:
         if isinstance(id_name, list):
-            document_id = f"{id_name['datetime']}"
+            document_id = f"{row_dict['datetime']}"
             for x in id_name[1:]:
                 document_id += f"_{row_dict[x]}"
         else:
             document_id = str(row_dict[id_name])
+
+        if db is None:
+            raise ValueError("Connection must be provided for Firebase.")
 
         doc_ref = db.collection(table_name).document(document_id)
         doc = doc_ref.get()
@@ -409,10 +412,14 @@ def enclose_in_quotes(input_str):
 def read_table_with_select(table_name, params=None, conn=None, convert_to_text=True):
     if USES_FIREBASE:
         from google.cloud.firestore_v1 import FieldFilter
-
         if not isinstance(params, dict):
             raise ValueError("Params must be a dictionary for Firebase.")
+
+        if conn is None:
+            raise ValueError("Connection must be provided for Firebase.")
+
         data = conn.collection(table_name)
+
         if "where" in params.keys():
             for clause in params["where"]:
                 data = data.where(filter=FieldFilter(*clause))

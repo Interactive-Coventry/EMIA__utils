@@ -28,6 +28,7 @@ if core_utils.settings["TOKENS"]["read_from"] == "local":
     OPENWEATHERMAP_TOKEN_KEY = core_utils.get_api_key("openweathermap.json")
 elif core_utils.settings["TOKENS"]["read_from"] == "secrets":
     import streamlit as st
+
     DATAMALL_TOKEN_KEY = st.secrets["tokens"]["datamall"]
     OPENWEATHERMAP_TOKEN_KEY = st.secrets["tokens"]["openweathermap"]
 
@@ -232,10 +233,15 @@ def fetch_traffic_images_from_link(path, page_size='10000', target_camera_id=Non
     json_obj = get_json_object_from_http_request(path)
     current_time = datetime.now(TZ_SG)
 
+    import collections.abc
+    if not isinstance(target_camera_id, collections.abc.Sequence):
+        target_camera_id = [target_camera_id]
+
     if 'value' in json_obj:
         for x in json_obj['value']:
             camera_id = x['CameraID']
-            if (target_camera_id is None) or (target_camera_id is not None and camera_id == target_camera_id):
+
+            if (target_camera_id is None) or (target_camera_id is not None and camera_id in target_camera_id):
                 latitude = x['Latitude']
                 longtitude = x['Longitude']
                 img_url = x['ImageLink']
