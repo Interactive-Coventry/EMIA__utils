@@ -29,6 +29,13 @@ WEATHER_CLASSES = {v: k for k, v in WEATHER_DICT.items()}
 WETNESS_DICT = {'Dry road surface': 0, 'Wet road surface': 1, 'Flooded road surface': 2}
 WETNESS_CLASSES = {v: k for k, v in WETNESS_DICT.items()}
 
+WEATHER_DESCRIPTION_DICT = {"broken clouds": 0, "clear sky": 1, "heavy intensity rain": 2,
+                            "light intensity shower rain": 3, "light rain": 4, "moderate rain": 5,
+                            "scattered clouds": 6, "thunderstorm": 7, "thunderstorm with heavy rain": 8,
+                            "thunderstorm with light rain": 9, "thunderstorm with rain": 10}
+WEATHER_DESCRIPTION_CLASSES = {v: k for k, v in WEATHER_DESCRIPTION_DICT.items()}
+
+
 ANOMALY_DICT = {"Normal": 0, "Anomaly": 1}
 
 
