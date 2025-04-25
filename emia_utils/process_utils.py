@@ -18,6 +18,8 @@ import csv
 import matplotlib.pyplot as plt
 from PIL import Image
 
+from .configuration import WEATHER_DICT, WEATHER_DESCRIPTION_DICT
+
 unresponsive_delta = timedelta(minutes=10)
 tz_SG = pytz.timezone('Asia/Singapore')
 tz_GR = pytz.timezone('Europe/Athens')
@@ -393,8 +395,8 @@ def rearrange_class_dict(class_dict, target_classes=None):
 
 
 def prepare_features_for_vehicle_counts(df_vehicles, df_weather=None, dropna=True,
-                                        include_weather_description=True, weather_dict=None,
-                                        weather_description_dict=None):
+                                        include_weather_description=True, weather_dict=WEATHER_DICT,
+                                        weather_description_dict=WEATHER_DESCRIPTION_DICT):
     index_column = "datetime"
 
     if df_weather is not None:
