@@ -1,4 +1,6 @@
 from libs.foxutils.utils import core_utils, train_functionalities, image_utils
+import logging
+logger = logging.getLogger("emia_utils.dataset_utils")
 
 from datetime import datetime
 # all datetimes are SG timezone
@@ -9,6 +11,9 @@ from os.path import join as pathjoin
 from os.path import sep, isdir
 from torch.utils.data import Dataset
 import torch
+import pandas as pd
+from map_utils import print_camera_locations
+from PIL import Image
 
 IM_WIDTH = 640
 IM_HEIGHT = 368
@@ -41,6 +46,20 @@ def read_image_and_timestamp(filename, dataset_dir, im_height=None, im_width=Non
     image = image_utils.read_image_to_tensor(filename, dataset_dir, im_height, im_width)
     image_timestamp = get_timestamp_from_filename(filename)
     return image, image_timestamp
+
+
+def get_target_image(camera_info, camera_selection, image_file=None):
+    logger.debug(f"Reading image from {image_file}")
+    img = Image.open(image_file)
+    map_fig = print_camera_locations(camera_info, [camera_selection])
+    logger.debug(f"Finished preparing preview.")
+    return img, map_fig
+
+
+def get_expressway_camera_info_from_file(camera_info_path, camera_id_key_name):
+    df_lan = pd.read_csv(camera_info_path, index_col=0)
+    df_lan[camera_id_key_name] = [str(x) for x in df_lan[camera_id_key_name]]
+    return df_lan
 
 
 def check_image_file(filename, dataset_dir):

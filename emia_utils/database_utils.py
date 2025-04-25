@@ -1,13 +1,17 @@
 import logging
+logger = logging.getLogger("emia_utils.database_utils")
 
+import pandas as pd
 import psycopg2
+from libs.foxutils.utils.core_utils import settings
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
-from sqlalchemy.engine.base import Connection
-import pandas as pd
-from libs.foxutils.utils.core_utils import settings
 
-logger = logging.getLogger("emia_utils.database_utils")
+from emia_utils.configuration import ANOMALY_TYPE_KEY_NAME, WEATHER_TYPE_KEY_NAME, WETNESS_TYPE_KEY_NAME, \
+    DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME, VEHICLE_COUNTS_TABLE_NAME, DASHCAM_TABLE_NAME, CAMERA_INFO_TABLE_NAME, \
+    WEATHER_TABLE_NAME, IMAGE_ANALYSIS_TABLE_NAME, WEATHER_DICT, WETNESS_DICT, ANOMALY_DICT
+from emia_utils.process_utils import prepare_features_for_vehicle_counts
+
 
 READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"]  # "local" or "secrets"
 DB_MODE = settings["DATABASE"]["db_mode"]  # "local" or "streamlit" or "firebase"
@@ -19,8 +23,6 @@ logger.debug(f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}\nUSES_STREAM
 
 
 def init_firebase():
-    import firebase_admin
-    from firebase_admin import credentials
     from google.oauth2 import service_account
     import streamlit as st
     from google.cloud import firestore
@@ -454,6 +456,103 @@ def read_table_with_select(table_name, params=None, conn=None, convert_to_text=T
                 command = text(command)
             df = pd.read_sql(command, conn)
         return df
+
+
+def get_camera_info_from_db(conn):
+    return read_table_with_select(CAMERA_INFO_TABLE_NAME, conn=conn)
+
+
+def get_target_camera_info(camera_id, conn):
+    df_lan = get_camera_info_from_db(conn)
+    df_coord = df_lan[df_lan[CAMERA_ID_KEY_NAME] == str(camera_id)]
+    return df_coord
+
+
+def append_weather_data_to_database(weather_df, conn):
+    if USES_FIREBASE:
+        weather_df.reset_index(inplace=True, drop=False)
+        row_dict = weather_df.iloc[0].to_dict()
+        insert_row_to_firebase(conn, row_dict, WEATHER_TABLE_NAME, DATETIME_KEY_NAME)
+    else:
+        append_df_to_table(weather_df, WEATHER_TABLE_NAME, append_only_new=True, conn=conn)
+
+
+def append_camera_location_data_to_database(location_df, conn):
+    if USES_FIREBASE:
+        location_df.reset_index(inplace=True, drop=False)
+        row_dict = location_df.iloc[0].to_dict()
+        insert_row_to_firebase(conn, row_dict, DASHCAM_TABLE_NAME,
+                               [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME])
+    else:
+        append_df_to_table(location_df, DASHCAM_TABLE_NAME, append_only_new=True,
+                                          conn=conn, append_index=True)
+
+
+def append_vehicle_counts_data_to_database(vehicle_counts_df, conn):
+    if USES_FIREBASE:
+        vehicle_counts_df.reset_index(inplace=True, drop=False)
+        row_dict = vehicle_counts_df.iloc[0].to_dict()
+        insert_row_to_firebase(conn, row_dict, VEHICLE_COUNTS_TABLE_NAME,
+                               [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME])
+    else:
+        append_df_to_table(vehicle_counts_df, VEHICLE_COUNTS_TABLE_NAME, append_only_new=True,
+                                          conn=conn)
+
+
+def append_image_analysis_data_to_database(target_datetime, camera_id, anomaly_label, weather_label, wetness_label, conn):
+
+    row_dict = {DATETIME_KEY_NAME: target_datetime,
+                CAMERA_ID_KEY_NAME: str(camera_id),
+                ANOMALY_TYPE_KEY_NAME: ANOMALY_DICT.get(anomaly_label),
+                WEATHER_TYPE_KEY_NAME: WEATHER_DICT.get(weather_label),
+                WETNESS_TYPE_KEY_NAME: WETNESS_DICT.get(wetness_label)
+                }
+    im_analysis_df = pd.DataFrame([row_dict])
+    im_analysis_df.set_index(DATETIME_KEY_NAME, inplace=True, drop=True)
+
+    if USES_FIREBASE:
+        im_analysis_df.reset_index(inplace=True, drop=False)
+        row_dict = im_analysis_df.iloc[0].to_dict()
+        insert_row_to_firebase(conn, row_dict, IMAGE_ANALYSIS_TABLE_NAME,
+                               [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME])
+
+    else:
+        append_df_to_table(im_analysis_df, IMAGE_ANALYSIS_TABLE_NAME, append_only_new=True,
+                                          conn=conn)
+
+
+def read_vehicle_forecast_data_from_database(current_date, camera_id, history_length, conn):
+    batch_size = 32
+
+    if USES_FIREBASE:
+        params = {"where": [[DATETIME_KEY_NAME, "<=", current_date]],
+                  "order_by": [DATETIME_KEY_NAME, firestore.Query.ASCENDING],
+                  "limit": batch_size}
+        df_weather = read_table_with_select(WEATHER_TABLE_NAME, params, conn)
+
+        params = {"where": [[DATETIME_KEY_NAME, "<=", current_date],
+                            [CAMERA_ID_KEY_NAME, "==", str(camera_id)]],
+                  "order_by": [DATETIME_KEY_NAME, firestore.Query.ASCENDING],
+                  "limit": batch_size}
+        df_vehicles = read_table_with_select(VEHICLE_COUNTS_TABLE_NAME, params, conn)
+
+    else:
+        params = [[DATETIME_KEY_NAME, "<=", enclose_in_quotes(current_date)]]
+        fetch_top = "\nORDER BY datetime DESC\nFETCH FIRST " + str(batch_size) + " ROWS ONLY"
+        params[-1].append(fetch_top)
+        df_weather = read_table_with_select(WEATHER_TABLE_NAME, params, conn=conn)
+
+        params = [[DATETIME_KEY_NAME, "<=", enclose_in_quotes(current_date), "AND"],
+                  [CAMERA_ID_KEY_NAME, "=", enclose_in_quotes(str(camera_id))]]
+        params[-1].append(fetch_top)
+        df_vehicles = read_table_with_select('vehicle_counts', params, conn=conn)
+
+    latest_weather_info = df_weather.iloc[0].copy()
+    df_features = prepare_features_for_vehicle_counts(df_vehicles, df_weather, dropna=True,
+                                                      include_weather_description=True)
+    df_features = df_features.iloc[-history_length:]
+    # logger.debug(f"Recovered features for vehicle forecasting: {df_features}")
+    return df_features, latest_weather_info
 
 
 if __name__ == "__main__":

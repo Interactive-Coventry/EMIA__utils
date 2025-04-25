@@ -8,8 +8,8 @@ from efficientnet_pytorch import EfficientNet
 from libs.foxutils.utils import core_utils
 from torchvision import transforms
 
-weather_dict = {'Clear': 0, 'Clouds': 1, 'Rain': 2, 'Thunderstorm': 3}
-weather_classes = {v: k for k, v in weather_dict.items()}
+from emia_utils.configuration import WEATHER_CLASSES
+
 device = core_utils.device
 
 def prepare_image_for_model_input(filepath):
@@ -65,9 +65,9 @@ def apply(filepath, modeldir=None):
         param.requires_grad = False
 
     num_ftrs = model_b7._fc.in_features
-    model_b7._fc = nn.Linear(num_ftrs, len(weather_classes))
+    model_b7._fc = nn.Linear(num_ftrs, len(WEATHER_CLASSES))
     model_b7 = model_b7.to(device)
     model = core_utils.load_trained_model(model_b7, model_filename)
 
-    label, prob = predict_weather_class(filepath, model, weather_classes, model_name)
+    label, prob = predict_weather_class(filepath, model, WEATHER_CLASSES, model_name)
     return label, prob
