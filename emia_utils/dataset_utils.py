@@ -12,7 +12,6 @@ from os.path import sep, isdir
 from torch.utils.data import Dataset
 import torch
 import pandas as pd
-from map_utils import print_camera_locations
 from PIL import Image
 
 IM_WIDTH = 640
@@ -49,6 +48,8 @@ def read_image_and_timestamp(filename, dataset_dir, im_height=None, im_width=Non
 
 
 def get_target_image(camera_info, camera_selection, image_file=None):
+    from .map_utils import print_camera_locations
+
     logger.debug(f"Reading image from {image_file}")
     img = Image.open(image_file)
     map_fig = print_camera_locations(camera_info, [camera_selection])

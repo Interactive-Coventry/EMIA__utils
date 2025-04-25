@@ -7,10 +7,10 @@ from libs.foxutils.utils.core_utils import settings
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 
-from emia_utils.configuration import ANOMALY_TYPE_KEY_NAME, WEATHER_TYPE_KEY_NAME, WETNESS_TYPE_KEY_NAME, \
+from .configuration import ANOMALY_TYPE_KEY_NAME, WEATHER_TYPE_KEY_NAME, WETNESS_TYPE_KEY_NAME, \
     DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME, VEHICLE_COUNTS_TABLE_NAME, DASHCAM_TABLE_NAME, CAMERA_INFO_TABLE_NAME, \
     WEATHER_TABLE_NAME, IMAGE_ANALYSIS_TABLE_NAME, WEATHER_DICT, WETNESS_DICT, ANOMALY_DICT
-from emia_utils.process_utils import prepare_features_for_vehicle_counts
+from .process_utils import prepare_features_for_vehicle_counts
 
 
 READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"]  # "local" or "secrets"

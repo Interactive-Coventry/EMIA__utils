@@ -5,6 +5,8 @@ from geopandas import GeoDataFrame
 from matplotlib import pyplot as plt
 from shapely.geometry import Point
 
+from .configuration import CAMERA_ID_KEY_NAME, LATITUDE_KEY_NAME, LONGITUDE_KEY_NAME, CAMERA_TYPES
+
 
 def split_in_categories(value, range_size, categories=3):
     if categories == 3:
@@ -33,9 +35,9 @@ def assign_heatmap_colors(values, colormap_name='viridis'):
     return colored_values
 
 
-def print_camera_locations(camera_info, camera_list, longitude_key_name, latitude_key_name, camera_id_key_name, camera_types, show_legend=True):
+def print_camera_locations(camera_info, camera_list, show_legend=True):
 
-    df_info = camera_info[camera_info[camera_id_key_name].isin(camera_list)]
+    df_info = camera_info[camera_info[CAMERA_ID_KEY_NAME].isin(camera_list)]
 
     singapore = gpd.read_file(pathjoin("assets", "maps", "SGP_adm0.shp"))
     if "colors" in camera_info.columns:
@@ -51,7 +53,7 @@ def print_camera_locations(camera_info, camera_list, longitude_key_name, latitud
     # Create a GeoDataFrame
     gdf_points = gpd.GeoDataFrame(
         df_info,
-        geometry=gpd.points_from_xy(df_info[longitude_key_name], df_info[latitude_key_name]),
+        geometry=gpd.points_from_xy(df_info[LONGITUDE_KEY_NAME], df_info[LATITUDE_KEY_NAME]),
         crs="EPSG:4326"
     )
     # handle only points inside the boundaries of Singapore
@@ -61,8 +63,8 @@ def print_camera_locations(camera_info, camera_list, longitude_key_name, latitud
     fig, ax = plt.subplots(figsize=(6, 6))
     singapore.plot(ax=ax, color='white', edgecolor='black')
 
-    sensor = {longitude_key_name: [103.8501], latitude_key_name: [1.2897], camera_id_key_name: ["Weather station"]}
-    geometry = [Point(xy) for xy in zip(sensor[longitude_key_name], sensor[latitude_key_name])]
+    sensor = {LONGITUDE_KEY_NAME: [103.8501], LATITUDE_KEY_NAME: [1.2897], CAMERA_ID_KEY_NAME: ["Weather station"]}
+    geometry = [Point(xy) for xy in zip(sensor[LONGITUDE_KEY_NAME], sensor[LATITUDE_KEY_NAME])]
     gdf_weather = GeoDataFrame(sensor, geometry=geometry)
 
     last_point = None
@@ -82,9 +84,9 @@ def print_camera_locations(camera_info, camera_list, longitude_key_name, latitud
     if show_legend:
         # Add a dummy plot for the legend
         dummy_point_expr = plt.Line2D([0], [0], marker="o", color="red", markersize=5, linewidth=0,
-                                       label=camera_types[0])
+                                       label=CAMERA_TYPES[0])
         dummy_point_mobile = plt.Line2D([0], [0], marker="o", color="blue", markersize=5, linewidth=0,
-                                        label=camera_types[1])
+                                        label=CAMERA_TYPES[1])
         dummy_point_selected = plt.Line2D([0], [0], marker="d", color="black", markersize=5, linewidth=0,
                                         label="Selected camera")
         dummy_point_station = plt.Line2D([0], [0], marker="s", color="cyan", markersize=5, linewidth=0,
