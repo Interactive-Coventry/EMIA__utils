@@ -18,6 +18,9 @@ DB_MODE = settings["DATABASE"]["db_mode"]  # "local" or "streamlit" or "firebase
 USES_STREAMLIT = DB_MODE == "streamlit"
 USES_FIREBASE = DB_MODE == "firebase"
 
+if USES_FIREBASE:
+    from google.cloud import firestore
+
 logger.debug(f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}\nUSES_STREAMLIT: {USES_STREAMLIT}\n"
              f"USES_FIREBASE: {USES_FIREBASE}")
 
@@ -25,7 +28,6 @@ logger.debug(f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}\nUSES_STREAM
 def init_firebase():
     from google.oauth2 import service_account
     import streamlit as st
-    from google.cloud import firestore
 
     key_dict = dict(st.secrets["firebase"])
     FIREBASE_PROJECT_NAME = settings["FIREBASE"]["project_name"]
@@ -414,6 +416,8 @@ def enclose_in_quotes(input_str):
 def read_table_with_select(table_name, params=None, conn=None, convert_to_text=True):
     if USES_FIREBASE:
         from google.cloud.firestore_v1 import FieldFilter
+        if params is None:
+            params = {}
         if not isinstance(params, dict):
             raise ValueError("Params must be a dictionary for Firebase.")
 
