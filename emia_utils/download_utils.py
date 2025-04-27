@@ -235,7 +235,7 @@ def fetch_traffic_images_from_link(path, page_size='10000', target_camera_id=Non
 
     if isinstance(target_camera_id, pd.Series):
         target_camera_id = target_camera_id.tolist()
-        
+
     import collections.abc
     if not isinstance(target_camera_id, collections.abc.Sequence):
         target_camera_id = [target_camera_id]
