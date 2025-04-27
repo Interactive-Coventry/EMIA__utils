@@ -233,6 +233,9 @@ def fetch_traffic_images_from_link(path, page_size='10000', target_camera_id=Non
     json_obj = get_json_object_from_http_request(path)
     current_time = datetime.now(TZ_SG)
 
+    if isinstance(target_camera_id, pd.Series):
+        target_camera_id = target_camera_id.tolist()
+        
     import collections.abc
     if not isinstance(target_camera_id, collections.abc.Sequence):
         target_camera_id = [target_camera_id]
