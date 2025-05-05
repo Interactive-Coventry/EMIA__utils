@@ -233,9 +233,6 @@ def fetch_traffic_images_from_link(path, page_size='10000', target_camera_id=Non
     json_obj = get_json_object_from_http_request(path)
     current_time = datetime.now(TZ_SG)
 
-    if isinstance(target_camera_id, pd.Series):
-        target_camera_id = target_camera_id.tolist()
-
     import collections.abc
     if not isinstance(target_camera_id, collections.abc.Sequence):
         target_camera_id = [target_camera_id]
@@ -243,8 +240,7 @@ def fetch_traffic_images_from_link(path, page_size='10000', target_camera_id=Non
     if 'value' in json_obj:
         for x in json_obj['value']:
             camera_id = x['CameraID']
-
-            if (target_camera_id is None) or (target_camera_id is not None and camera_id in target_camera_id):
+            if target_camera_id is None or camera_id in target_camera_id:
                 latitude = x['Latitude']
                 longtitude = x['Longitude']
                 img_url = x['ImageLink']
