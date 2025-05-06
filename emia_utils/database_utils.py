@@ -503,14 +503,22 @@ def append_vehicle_counts_data_to_database(vehicle_counts_df, conn):
                                           conn=conn)
 
 
-def append_image_analysis_data_to_database(target_datetime, camera_id, anomaly_label, weather_label, wetness_label, conn):
+def append_image_analysis_data_to_database(target_datetime, camera_id, anomaly_label, weather_label, wetness_label,
+                                           accident, congestion, flood, forecast_30min, forecast_5min, conn):
 
-    row_dict = {DATETIME_KEY_NAME: target_datetime,
-                CAMERA_ID_KEY_NAME: str(camera_id),
-                ANOMALY_TYPE_KEY_NAME: ANOMALY_DICT.get(anomaly_label),
-                WEATHER_TYPE_KEY_NAME: WEATHER_DICT.get(weather_label),
-                WETNESS_TYPE_KEY_NAME: WETNESS_DICT.get(wetness_label)
-                }
+    row_dict = {
+        DATETIME_KEY_NAME: target_datetime,  # Timestamp
+        CAMERA_ID_KEY_NAME: str(camera_id),  # String
+        ANOMALY_TYPE_KEY_NAME: ANOMALY_DICT.get(anomaly_label, 0),  # Map anomaly label to number
+        WEATHER_TYPE_KEY_NAME: WEATHER_DICT.get(weather_label, 0),  # Map weather label to number
+        WETNESS_TYPE_KEY_NAME: WETNESS_DICT.get(wetness_label, 0),  # Map wetness label to number
+        "accident": bool(accident),  # Accident (Boolean)
+        "congestion": bool(congestion),  # Congestion (Boolean)
+        "flood": bool(flood),  # Flood (Boolean)
+        "forecast_30min": int(forecast_30min),  # 30-minute forecast (Number)
+        "forecast_5min": int(forecast_5min),  # 5-minute forecast (Number)
+    }
+
     im_analysis_df = pd.DataFrame([row_dict])
     im_analysis_df.set_index(DATETIME_KEY_NAME, inplace=True, drop=True)
 
