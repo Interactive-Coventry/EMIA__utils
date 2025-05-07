@@ -1,39 +1,37 @@
 import logging
-logger = logging.getLogger("emia_utils.database_utils")
+import socket
 
 import pandas as pd
 import psycopg2
-from libs.foxutils.utils.core_utils import settings
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
+from libs.foxutils.utils.core_utils import settings
 
-from .configuration import ANOMALY_TYPE_KEY_NAME, WEATHER_TYPE_KEY_NAME, WETNESS_TYPE_KEY_NAME, \
-    DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME, VEHICLE_COUNTS_TABLE_NAME, DASHCAM_TABLE_NAME, CAMERA_INFO_TABLE_NAME, \
-    WEATHER_TABLE_NAME, IMAGE_ANALYSIS_TABLE_NAME, WEATHER_DICT, WETNESS_DICT, ANOMALY_DICT
+logger = logging.getLogger("emia_utils.database_utils")
+
+from .configuration import (
+    ANOMALY_TYPE_KEY_NAME, WEATHER_TYPE_KEY_NAME, WETNESS_TYPE_KEY_NAME,
+    DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME, VEHICLE_COUNTS_TABLE_NAME,
+    DASHCAM_TABLE_NAME, WEATHER_TABLE_NAME, IMAGE_ANALYSIS_TABLE_NAME,
+    WEATHER_DICT, WETNESS_DICT, ANOMALY_DICT, CAMERA_INFO_TABLE_NAME
+)
 from .process_utils import prepare_features_for_vehicle_counts
-
 
 READ_DB_CREDENTIALS_FROM = settings["TOKENS"]["read_from"]  # "local" or "secrets"
 DB_MODE = settings["DATABASE"]["db_mode"]  # "local" or "streamlit" or "firebase"
-USES_STREAMLIT = DB_MODE == "streamlit"
-USES_FIREBASE = DB_MODE == "firebase"
+USES_STREAMLIT, USES_FIREBASE = DB_MODE == "streamlit", DB_MODE == "firebase"
 
 if USES_FIREBASE:
     from google.cloud import firestore
 
-logger.debug(f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}\nUSES_STREAMLIT: {USES_STREAMLIT}\n"
-             f"USES_FIREBASE: {USES_FIREBASE}")
+logger.debug(f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}, USES_STREAMLIT: {USES_STREAMLIT}, USES_FIREBASE: {USES_FIREBASE}")
 
 
 def init_firebase():
     from google.oauth2 import service_account
     import streamlit as st
-
-    key_dict = dict(st.secrets["firebase"])
-    FIREBASE_PROJECT_NAME = settings["FIREBASE"]["project_name"]
-    creds = service_account.Credentials.from_service_account_info(key_dict)
-    db = firestore.Client(credentials=creds, project=FIREBASE_PROJECT_NAME)
-    return db
+    creds = service_account.Credentials.from_service_account_info(dict(st.secrets["firebase"]))
+    return firestore.Client(credentials=creds, project=settings["FIREBASE"]["project_name"])
 
 
 def init_connection():  # For psycopg2 connections
@@ -83,48 +81,37 @@ def insert_row_to_firebase(db, row_dict, table_name, id_name=None):
             logger.debug(f"Added document with id {document_id} to {table_name}.")
 
 
-def get_connection_parameters(host=None, port=None, dbname=None, user=None, password=None):
+def get_connection_parameters():
     if READ_DB_CREDENTIALS_FROM == "local":
-        logger.debug(f"Reading from local settings")
-        if host is None:
-            host = settings["DATABASE"]["host"]
-        if port is None:
-            port = settings["DATABASE"]["port"]
-        if dbname is None:
-            dbname = settings["DATABASE"]["dbname"]
-        if user is None:
-            user = settings["DATABASE"]["user"]
-        if password is None:
-            password = settings["DATABASE"]["password"]
-
+        return tuple(settings["DATABASE"].get(k) for k in ["host", "port", "dbname", "user", "password"])
     elif USES_STREAMLIT or READ_DB_CREDENTIALS_FROM == "secrets":
         import streamlit as st
-        logger.debug(f"Reading from secrets")
-        if host is None:
-            host = st.secrets.connections.postgresql.host
-        if port is None:
-            port = st.secrets.connections.postgresql.port
-        if dbname is None:
-            dbname = st.secrets.connections.postgresql.database
-        if user is None:
-            user = st.secrets.connections.postgresql.username
-        if password is None:
-            password = st.secrets.connections.postgresql.password
-
+        return (
+            st.secrets.connections.postgresql.host,
+            st.secrets.connections.postgresql.port,
+            st.secrets.connections.postgresql.database,
+            st.secrets.connections.postgresql.username,
+            st.secrets.connections.postgresql.password
+        )
     else:
-        raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
-
-    return host, port, dbname, user, password
+        raise ValueError(f"Invalid DB credentials source: {READ_DB_CREDENTIALS_FROM}")
 
 
 def engine_connect():
-    host, port, dbname, user, password = get_connection_parameters()
-    conn_string = f"postgresql://[{host}]:{port}/{dbname}?user={user}&password={password}"
-    db = create_engine(conn_string)  # , pool_size=20, max_overflow=0)  # , pool_pre_ping=True
-    conn = db.connect()
-    logger.debug(f"Engine connect:Connecting to {conn} from secrets.")
+    """
+    Creates and returns a SQLAlchemy engine connection.
 
-    return conn
+    Uses connection parameters from the configuration or Streamlit secrets to build the connection string.
+    """
+    try:
+        host, port, dbname, user, password = get_connection_parameters()
+        conn_string = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+        db = create_engine(conn_string)  # You can configure pool size here if needed
+        logger.debug(f"Engine connect: Connecting to {conn_string}.")
+        return db.connect()
+    except Exception as e:
+        logger.error(f"Failed to create engine connection: {e}")
+        raise
 
 
 def connect_with_psycopg2(host=None, port=None, dbname=None, user=None, password=None):
@@ -142,7 +129,9 @@ def connect_with_psycopg2(host=None, port=None, dbname=None, user=None, password
 def connect(host=None, port=None, dbname=None, user=None, password=None):
     try:
         if READ_DB_CREDENTIALS_FROM == "local":
-            conn = connect_with_psycopg2(host, port, dbname, user, password)
+            logger.debug("Connecting to local PostgreSQL database...")
+            params = get_connection_parameters()
+            return psycopg2.connect(host=params[0], port=params[1], database=params[2], user=params[3], password=params[4])
 
         elif USES_STREAMLIT:
             import streamlit as st
@@ -467,104 +456,88 @@ def get_camera_info_from_db(conn):
 
 
 def get_target_camera_info(camera_id, conn):
-    df_lan = get_camera_info_from_db(conn)
-    df_coord = df_lan[df_lan[CAMERA_ID_KEY_NAME] == str(camera_id)]
-    return df_coord
+    df_camera = get_camera_info_from_db(conn)
+    return df_camera[df_camera[CAMERA_ID_KEY_NAME] == str(camera_id)]
+
+
+def append_data_to_database(df, table_name, primary_keys, conn):
+    """
+    Handles appending data to the database, either to Firebase or PostgreSQL.
+    :param df: DataFrame to append.
+    :param table_name: Target table name.
+    :param primary_keys: Primary key(s) for deduplication or indexing.
+    :param conn: Database connection object.
+    """
+    if USES_FIREBASE:
+        df.reset_index(inplace=True, drop=False)  # Ensure the index is included as a column
+        row_dict = df.iloc[0].to_dict()
+        insert_row_to_firebase(conn, row_dict, table_name, primary_keys)
+    else:
+        append_df_to_table(df, table_name, append_only_new=True, conn=conn, append_index=True)
 
 
 def append_weather_data_to_database(weather_df, conn):
-    if USES_FIREBASE:
-        weather_df.reset_index(inplace=True, drop=False)
-        row_dict = weather_df.iloc[0].to_dict()
-        insert_row_to_firebase(conn, row_dict, WEATHER_TABLE_NAME, DATETIME_KEY_NAME)
-    else:
-        append_df_to_table(weather_df, WEATHER_TABLE_NAME, append_only_new=True, conn=conn)
+    append_data_to_database(weather_df, WEATHER_TABLE_NAME, DATETIME_KEY_NAME, conn)
 
 
 def append_camera_location_data_to_database(location_df, conn):
-    if USES_FIREBASE:
-        location_df.reset_index(inplace=True, drop=False)
-        row_dict = location_df.iloc[0].to_dict()
-        insert_row_to_firebase(conn, row_dict, DASHCAM_TABLE_NAME,
-                               [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME])
-    else:
-        append_df_to_table(location_df, DASHCAM_TABLE_NAME, append_only_new=True,
-                                          conn=conn, append_index=True)
+    append_data_to_database(location_df, DASHCAM_TABLE_NAME, [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME], conn)
 
 
 def append_vehicle_counts_data_to_database(vehicle_counts_df, conn):
-    if USES_FIREBASE:
-        vehicle_counts_df.reset_index(inplace=True, drop=False)
-        row_dict = vehicle_counts_df.iloc[0].to_dict()
-        insert_row_to_firebase(conn, row_dict, VEHICLE_COUNTS_TABLE_NAME,
-                               [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME])
-    else:
-        append_df_to_table(vehicle_counts_df, VEHICLE_COUNTS_TABLE_NAME, append_only_new=True,
-                                          conn=conn)
+    append_data_to_database(vehicle_counts_df, VEHICLE_COUNTS_TABLE_NAME, [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME], conn)
 
 
 def append_image_analysis_data_to_database(target_datetime, camera_id, anomaly_label, weather_label, wetness_label,
                                            accident, congestion, flood, forecast_30min, forecast_5min, conn):
-
     row_dict = {
-        DATETIME_KEY_NAME: target_datetime,  # Timestamp
-        CAMERA_ID_KEY_NAME: str(camera_id),  # String
-        ANOMALY_TYPE_KEY_NAME: ANOMALY_DICT.get(anomaly_label, 0),  # Map anomaly label to number
-        WEATHER_TYPE_KEY_NAME: WEATHER_DICT.get(weather_label, 0),  # Map weather label to number
-        WETNESS_TYPE_KEY_NAME: WETNESS_DICT.get(wetness_label, 0),  # Map wetness label to number
-        "accident": bool(accident),  # Accident (Boolean)
-        "congestion": bool(congestion),  # Congestion (Boolean)
-        "flood": bool(flood),  # Flood (Boolean)
-        "forecast_30min": int(forecast_30min),  # 30-minute forecast (Number)
-        "forecast_5min": int(forecast_5min),  # 5-minute forecast (Number)
+        DATETIME_KEY_NAME: target_datetime,
+        CAMERA_ID_KEY_NAME: str(camera_id),
+        ANOMALY_TYPE_KEY_NAME: ANOMALY_DICT.get(anomaly_label, 0),
+        WEATHER_TYPE_KEY_NAME: WEATHER_DICT.get(weather_label, 0),
+        WETNESS_TYPE_KEY_NAME: WETNESS_DICT.get(wetness_label, 0),
+        "accident": bool(accident),
+        "congestion": bool(congestion),
+        "flood": bool(flood),
+        "forecast_30min": int(forecast_30min),
+        "forecast_5min": int(forecast_5min),
     }
 
-    im_analysis_df = pd.DataFrame([row_dict])
-    im_analysis_df.set_index(DATETIME_KEY_NAME, inplace=True, drop=True)
-
-    if USES_FIREBASE:
-        im_analysis_df.reset_index(inplace=True, drop=False)
-        row_dict = im_analysis_df.iloc[0].to_dict()
-        insert_row_to_firebase(conn, row_dict, IMAGE_ANALYSIS_TABLE_NAME,
-                               [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME])
-
-    else:
-        append_df_to_table(im_analysis_df, IMAGE_ANALYSIS_TABLE_NAME, append_only_new=True,
-                                          conn=conn)
+    im_analysis_df = pd.DataFrame([row_dict]).set_index(DATETIME_KEY_NAME)
+    append_data_to_database(im_analysis_df, IMAGE_ANALYSIS_TABLE_NAME, [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME], conn)
 
 
 def read_vehicle_forecast_data_from_database(current_date, camera_id, history_length, conn):
     batch_size = 32
 
-    if USES_FIREBASE:
-        params = {"where": [[DATETIME_KEY_NAME, "<=", current_date]],
-                  "order_by": [DATETIME_KEY_NAME, firestore.Query.ASCENDING],
-                  "limit": batch_size}
-        df_weather = read_table_with_select(WEATHER_TABLE_NAME, params, conn)
+    def fetch_data(table_name, where_conditions):
+        if USES_FIREBASE:
+            params = {
+                "where": where_conditions,
+                "order_by": [DATETIME_KEY_NAME, firestore.Query.ASCENDING],
+                "limit": batch_size,
+            }
+            return read_table_with_select(table_name, params, conn)
+        else:
+            params = [[DATETIME_KEY_NAME, "<=", enclose_in_quotes(current_date)]]
+            fetch_top = f"\nORDER BY {DATETIME_KEY_NAME} DESC\nFETCH FIRST {batch_size} ROWS ONLY"
+            params[-1].append(fetch_top)
+            return read_table_with_select(table_name, params, conn=conn)
 
-        params = {"where": [[DATETIME_KEY_NAME, "<=", current_date],
-                            [CAMERA_ID_KEY_NAME, "==", str(camera_id)]],
-                  "order_by": [DATETIME_KEY_NAME, firestore.Query.ASCENDING],
-                  "limit": batch_size}
-        df_vehicles = read_table_with_select(VEHICLE_COUNTS_TABLE_NAME, params, conn)
+    # Fetch weather data
+    df_weather = fetch_data(WEATHER_TABLE_NAME, [[DATETIME_KEY_NAME, "<=", current_date]])
 
-    else:
-        params = [[DATETIME_KEY_NAME, "<=", enclose_in_quotes(current_date)]]
-        fetch_top = "\nORDER BY datetime DESC\nFETCH FIRST " + str(batch_size) + " ROWS ONLY"
-        params[-1].append(fetch_top)
-        df_weather = read_table_with_select(WEATHER_TABLE_NAME, params, conn=conn)
+    # Fetch vehicle counts data
+    vehicle_conditions = [
+        [DATETIME_KEY_NAME, "<=", current_date],
+        [CAMERA_ID_KEY_NAME, "==", str(camera_id)] if USES_FIREBASE else [CAMERA_ID_KEY_NAME, "=", enclose_in_quotes(str(camera_id))]
+    ]
+    df_vehicles = fetch_data(VEHICLE_COUNTS_TABLE_NAME, vehicle_conditions)
 
-        params = [[DATETIME_KEY_NAME, "<=", enclose_in_quotes(current_date), "AND"],
-                  [CAMERA_ID_KEY_NAME, "=", enclose_in_quotes(str(camera_id))]]
-        params[-1].append(fetch_top)
-        df_vehicles = read_table_with_select('vehicle_counts', params, conn=conn)
-
+    # Process and return data
     latest_weather_info = df_weather.iloc[0].copy()
-    df_features = prepare_features_for_vehicle_counts(df_vehicles, df_weather, dropna=True,
-                                                      include_weather_description=True)
-    df_features = df_features.iloc[-history_length:]
-    # logger.debug(f"Recovered features for vehicle forecasting: {df_features}")
-    return df_features, latest_weather_info
+    df_features = prepare_features_for_vehicle_counts(df_vehicles, df_weather, dropna=True, include_weather_description=True)
+    return df_features.iloc[-history_length:], latest_weather_info
 
 
 if __name__ == "__main__":
