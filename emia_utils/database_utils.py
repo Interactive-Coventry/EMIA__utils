@@ -175,18 +175,13 @@ def connect_to_streamlit():
 def connect(host=None, port=None, dbname=None, user=None, password=None):
     """
     Establish a database connection based on the configured credentials source.
-    :return: Connection object or None if an error occurs.
     """
-    try:
-        if READ_DB_CREDENTIALS_FROM == "local":
-            return connect_to_postgres()
-        elif USES_STREAMLIT:
-            return connect_to_streamlit()
-        else:
-            raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
-    except Exception as error:
-        logger.error(f"Error in database connection: {error}")
-        return None
+    if READ_DB_CREDENTIALS_FROM == "local":
+        return connect_to_postgres()
+    elif USES_STREAMLIT:
+        return connect_to_streamlit()
+    else:
+        raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
 
 
 def execute_commands(commands, target_function=None, **kwargs):
