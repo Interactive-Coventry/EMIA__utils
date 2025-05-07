@@ -607,12 +607,31 @@ def read_table_with_sql(table_name, params, conn, convert_to_text):
     :param convert_to_text: Whether to convert the SQL command to a SQLAlchemy text object.
     :return: DataFrame containing the queried data.
     """
-    command = f"SELECT * FROM {table_name} "
-    if params and len(params) > 0:
-        where_clause = "WHERE "
-        command = command + where_clause
-        for vals in params:
-            command = command + ' '.join(vals) + ' '
+    command = f"SELECT * FROM {table_name}"
+
+    if "where" in params:
+        where_clauses = []  # Initialize the list to store individual conditions
+        for condition in params["where"]:
+            if len(condition) == 3:  # Ensure the condition has field, operator, and value
+                field, operator, value = condition
+                if isinstance(value, str):
+                    value = f"'{value}'"
+                if operator == "==":
+                    operator = "="
+                where_clauses.append(f"{field} {operator} {value}")
+
+        if where_clauses:
+            command += " WHERE " + " AND ".join(where_clauses)
+
+    if "order_by" in params:
+        column, direction = params["order_by"]
+        direction = direction.upper()  # Ensure direction is uppercase (ASC or DESC)
+        if direction not in ["ASC", "DESC"]:
+            raise ValueError("Invalid order direction. Must be 'ASC' or 'DESC'.")
+        command += f" ORDER BY {column} {direction}"
+
+    if "limit" in params:
+        command += f" LIMIT {params['limit']}"
 
     logger.debug(f"Reading table with select: {command}")
 
@@ -717,7 +736,7 @@ def read_vehicle_forecast_data_from_database(current_date, camera_id, history_le
             params = [[DATETIME_KEY_NAME, "<=", enclose_in_quotes(current_date)]]
             fetch_top = f"\nORDER BY {DATETIME_KEY_NAME} DESC\nFETCH FIRST {batch_size} ROWS ONLY"
             params[-1].append(fetch_top)
-            return read_table_with_select(table_name, params, conn=conn)
+            return read_table_with_select(table_name, params, conn=conn, convert_to_text=False)
 
     # Fetch weather data
     df_weather = fetch_data(WEATHER_TABLE_NAME, [[DATETIME_KEY_NAME, "<=", current_date]])
