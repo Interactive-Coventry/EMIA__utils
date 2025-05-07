@@ -716,7 +716,6 @@ def append_image_analysis_data_to_database(target_datetime, camera_id, anomaly_l
         "forecast_30min": int(forecast_30min),
         "forecast_5min": int(forecast_5min),
     }
-
     im_analysis_df = pd.DataFrame([row_dict]).set_index(DATETIME_KEY_NAME)
     append_data_to_database(im_analysis_df, IMAGE_ANALYSIS_TABLE_NAME, [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME], conn)
 
