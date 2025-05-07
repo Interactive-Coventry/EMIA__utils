@@ -29,6 +29,10 @@ logger.debug(
 
 
 def init_firebase():
+    """
+    Initialize Firebase connection using service account credentials.
+    :return: Firestore client object.
+    """
     from google.oauth2 import service_account
     import streamlit as st
     creds = service_account.Credentials.from_service_account_info(dict(st.secrets["firebase"]))
@@ -36,6 +40,10 @@ def init_firebase():
 
 
 def init_connection():  # For psycopg2 connections
+    """
+    Initialize the connection to the PostgreSQL database.
+    :return: psycopg2 connection object.
+    """
     import socket
     hostname = socket.gethostname()
     IPAddr = socket.gethostbyname(hostname)
@@ -49,6 +57,10 @@ def init_connection():  # For psycopg2 connections
 
 
 def collection_reference_to_dataframe(db_collection, is_list=False):
+    """
+    Converts a Firestore collection reference to a pandas DataFrame.
+    :param db_collection: Firestore collection reference or list of documents.
+    """
     if not is_list:
         table = list(db_collection.stream())
     else:
@@ -59,6 +71,10 @@ def collection_reference_to_dataframe(db_collection, is_list=False):
 
 
 def insert_row_to_firebase(db, row_dict, table_name, id_name=None):
+    """
+    Inserts a row into a Firestore collection.
+    :param db: Firestore client object.
+    """
     if id_name is None:
         update_time, added_ref = db.collection(table_name).add(row_dict)
         logger.debug(f"Added document with id {added_ref.id} to {table_name} at {update_time}.")
@@ -83,6 +99,10 @@ def insert_row_to_firebase(db, row_dict, table_name, id_name=None):
 
 
 def get_connection_parameters():
+    """
+    Retrieves the database connection parameters based on the configured source.
+    :return: Tuple containing host, port, dbname, user, password.
+    """
     if READ_DB_CREDENTIALS_FROM == "local":
         return tuple(settings["DATABASE"].get(k) for k in ["host", "port", "dbname", "user", "password"])
     elif USES_STREAMLIT or READ_DB_CREDENTIALS_FROM == "secrets":
@@ -170,6 +190,13 @@ def connect(host=None, port=None, dbname=None, user=None, password=None):
 
 
 def execute_commands(commands, target_function=None, **kwargs):
+    """
+    Execute a list of SQL commands on the PostgreSQL database.
+    :param commands: List of SQL commands to execute.
+    :param target_function: Optional function to process the results of each command.
+    :param kwargs: Additional keyword arguments to pass to the target function.
+    :return: List of results from the target function for each command.
+    """
     results = []
     try:
         conn = connect()
@@ -194,11 +221,24 @@ def execute_commands(commands, target_function=None, **kwargs):
 
 
 def execute_command(command, target_function=None, **kwargs):
+    """
+    Execute a single SQL command on the PostgreSQL database.
+    :param command: SQL command to execute.
+    :param target_function: Optional function to process the result of the command.
+    :param kwargs: Additional keyword arguments to pass to the target function.
+    :return: Result from the target function or None if no function is provided.
+    """
     results = execute_commands([command], target_function, **kwargs)
     return results[0]
 
 
 def query_with_streamlit(command, conn=None):
+    """
+    Execute a SQL query and return the result as a DataFrame.
+    :param command: SQL command to execute.
+    :param conn: Streamlit database connection object.
+    :return: DataFrame containing the query result.
+    """
     df = None
     if conn is None:
         conn = connect()
@@ -214,6 +254,12 @@ def query_with_streamlit(command, conn=None):
 
 
 def execute_command_with_streamlit(command, conn=None):
+    """
+    Execute a SQL command using a Streamlit connection.
+    :param command: SQL command to execute.
+    :param conn: Streamlit database connection object.
+    :return: None
+    """
     if conn is None:
         conn = connect()
     with conn.session as s:
@@ -273,6 +319,10 @@ def check_connection(conn=None):
 
 
 def drop_table(table_name):
+    """
+    Drop a table from the PostgreSQL database.
+    :param table_name: Name of the table to drop.
+    """
     logger.info(f"Dropping table: {table_name}")
     command = f"drop table if exists {table_name}"
     execute_command(command)
@@ -389,6 +439,12 @@ def retrieve_primary_key(table_name, conn=None):
 
 
 def set_primary_key_from_df(df, table_name, conn=None):
+    """
+    Set the primary key for a table based on the DataFrame's index name.
+    :param df: DataFrame containing the data.
+    :param table_name: Name of the table to modify.
+    :param conn: Database connection object (optional, for Streamlit connections).
+    """
     current_primary_key = retrieve_primary_key(table_name)
     if current_primary_key is not None and current_primary_key != df.index.name:
         command = f"ALTER TABLE {table_name} ADD PRIMARY KEY ( {df.index.name});"
@@ -399,11 +455,27 @@ def set_primary_key_from_df(df, table_name, conn=None):
 
 
 def replace_df_to_table(df, table_name, conn=None):
+    """
+    Replace the contents of a table with the DataFrame's data.
+    :param df: DataFrame containing the data.
+    :param table_name: Name of the table to replace.
+    :param conn: Database connection object (optional, for Streamlit connections).
+    :return: None
+    """
     df.to_sql(table_name, engine_connect(), if_exists="replace")
     set_primary_key_from_df(df, table_name, conn)
 
 
 def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_index=True):
+    """
+    Append a DataFrame to a PostgreSQL table.
+    :param df: DataFrame to append.
+    :param table_name: Name of the target table.
+    :param append_only_new: Whether to append only new rows.
+    :param conn: Database connection object (optional, for Streamlit connections).
+    :param append_index: Whether to include the DataFrame's index as a column.
+    :return: None
+    """
     try:
         if append_only_new:
             if append_index:
