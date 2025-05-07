@@ -24,7 +24,8 @@ USES_STREAMLIT, USES_FIREBASE = DB_MODE == "streamlit", DB_MODE == "firebase"
 if USES_FIREBASE:
     from google.cloud import firestore
 
-logger.debug(f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}, USES_STREAMLIT: {USES_STREAMLIT}, USES_FIREBASE: {USES_FIREBASE}")
+logger.debug(
+    f"READ_DB_CREDENTIALS_FROM: {READ_DB_CREDENTIALS_FROM}, USES_STREAMLIT: {USES_STREAMLIT}, USES_FIREBASE: {USES_FIREBASE}")
 
 
 def init_firebase():
@@ -114,38 +115,57 @@ def engine_connect():
         raise
 
 
-def connect_with_psycopg2(host=None, port=None, dbname=None, user=None, password=None):
-    host, port, dbname, user, password = get_connection_parameters(host, port, dbname, user, password)
-    conn = psycopg2.connect(
-        host=host,
-        port=port,
-        database=dbname,
-        user=user,
-        password=password)
-    logger.debug(f"Connecting to {conn} from {READ_DB_CREDENTIALS_FROM}.")
-    return conn
+def connect_to_postgres():
+    """
+    Establish a connection to a local PostgreSQL database using psycopg2.
+    :return: psycopg2 connection object or None if an error occurs.
+    """
+    try:
+        logger.debug("Connecting to local PostgreSQL database...")
+        params = get_connection_parameters()
+        return psycopg2.connect(
+            host=params[0],
+            port=params[1],
+            database=params[2],
+            user=params[3],
+            password=params[4]
+        )
+    except (Exception, psycopg2.DatabaseError) as error:
+        logger.error(f"Error connecting to PostgreSQL: {error}")
+        return None
+
+
+def connect_to_streamlit():
+    """
+    Establish a connection to a database using Streamlit's connection utilities.
+    :return: Streamlit connection object or None if an error occurs.
+    """
+    try:
+        import streamlit as st
+        try:
+            return st.connection("postgresql", type="sql")
+        except AttributeError:
+            # Fallback for older Streamlit versions
+            return st.experimental_connection("postgresql", type="sql")
+    except Exception as error:
+        logger.error(f"Error connecting via Streamlit: {error}")
+        return None
 
 
 def connect(host=None, port=None, dbname=None, user=None, password=None):
+    """
+    Establish a database connection based on the configured credentials source.
+    :return: Connection object or None if an error occurs.
+    """
     try:
         if READ_DB_CREDENTIALS_FROM == "local":
-            logger.debug("Connecting to local PostgreSQL database...")
-            params = get_connection_parameters()
-            return psycopg2.connect(host=params[0], port=params[1], database=params[2], user=params[3], password=params[4])
-
+            return connect_to_postgres()
         elif USES_STREAMLIT:
-            import streamlit as st
-            try:
-                conn = st.connection("postgresql", type="sql")
-            except AttributeError as e:
-                conn = st.experimental_connection("postgresql", type="sql")
+            return connect_to_streamlit()
         else:
             raise ValueError(f"No connection to database for settings {READ_DB_CREDENTIALS_FROM}.")
-
-        return conn
-
-    except (Exception, psycopg2.DatabaseError) as error:
-        logger.error(error)
+    except Exception as error:
+        logger.error(f"Error in database connection: {error}")
         return None
 
 
@@ -209,20 +229,47 @@ def fetch_one(cur):
     return result
 
 
-def check_connection(conn=None):
-    """ Connect to the PostgreSQL database server """
-    # connect to the PostgreSQL server
-    logger.info('Connecting to the PostgreSQL database...')
-
-    # execute a statement
-    command = 'SELECT version()'
-    if USES_STREAMLIT:
-        df = query_with_streamlit(command, conn)
-        if df is not None:
-            db_version = df.iloc[0]["version"]
+def get_postgresql_version_with_streamlit(command, conn):
+    """
+    Fetch the PostgreSQL version using a Streamlit connection.
+    :param command: SQL command to execute.
+    :param conn: Streamlit database connection object.
+    :return: PostgreSQL version as a string, or None if an error occurs.
+    """
+    df = query_with_streamlit(command, conn)
+    if df is not None and not df.empty:
+        return df.iloc[0]["version"]
     else:
-        db_version = execute_command(command, fetch_one)
-    logger.info(f"PostgreSQL database version: {db_version}")
+        logger.warning("Failed to fetch PostgreSQL version using Streamlit.")
+        return None
+
+
+def get_postgresql_version_with_standard_connection(command):
+    """
+    Fetch the PostgreSQL version using a standard PostgreSQL connection.
+    :param command: SQL command to execute.
+    :return: PostgreSQL version as a string, or None if an error occurs.
+    """
+    return execute_command(command, fetch_one)
+
+
+def check_connection(conn=None):
+    """
+    Check the connection to the PostgreSQL database server and log the version.
+    :param conn: Database connection object (optional, for Streamlit connections).
+    """
+    logger.info('Connecting to the PostgreSQL database...')
+    command = 'SELECT version()'
+
+    if USES_STREAMLIT:
+        db_version = get_postgresql_version_with_streamlit(command, conn)
+    else:
+        db_version = get_postgresql_version_with_standard_connection(command)
+
+    if db_version:
+        logger.info(f"PostgreSQL database version: {db_version}")
+    else:
+        logger.error("Failed to determine PostgreSQL version.")
 
 
 def drop_table(table_name):
@@ -296,21 +343,49 @@ def create_tables():
     execute_commands(commands)
 
 
-def retrieve_primary_key(table_name, conn=None):
-    command = f"SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS data_type\nFROM pg_index i\n" \
-              f"JOIN pg_attribute a ON a.attrelid = i.indrelid  AND a.attnum = ANY(i.indkey)\n" \
-              f"WHERE i.indrelid = '{table_name}'::regclass AND i.indisprimary;"
-
-    result = None
-    if USES_STREAMLIT:
-        df = query_with_streamlit(command, conn)
-        if df is not None:
-            result = df.iloc[0]["attname"]
+def retrieve_primary_key_with_streamlit(command, conn):
+    """
+    Retrieve the primary key of a table using a Streamlit connection.
+    :param command: SQL command to execute.
+    :param conn: Streamlit database connection object.
+    :return: Primary key column name as a string, or None if not found.
+    """
+    df = query_with_streamlit(command, conn)
+    if df is not None and not df.empty:
+        return df.iloc[0]["attname"]
     else:
-        result = execute_command(command, fetch_one)
-        if result is not None:
-            result = result[0]
-    return result
+        logger.warning("Failed to retrieve primary key using Streamlit.")
+        return None
+
+
+def retrieve_primary_key_with_standard_connection(command):
+    """
+    Retrieve the primary key of a table using a standard PostgreSQL connection.
+    :param command: SQL command to execute.
+    :return: Primary key column name as a string, or None if not found.
+    """
+    result = execute_command(command, fetch_one)
+    return result[0] if result else None
+
+
+def retrieve_primary_key(table_name, conn=None):
+    """
+    Retrieve the primary key column name for a given table.
+    :param table_name: Name of the table to query.
+    :param conn: Database connection object (optional, for Streamlit connections).
+    :return: Primary key column name as a string, or None if not found.
+    """
+    command = (
+        f"SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS data_type\n"
+        f"FROM pg_index i\n"
+        f"JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)\n"
+        f"WHERE i.indrelid = '{table_name}'::regclass AND i.indisprimary;"
+    )
+
+    if USES_STREAMLIT:
+        return retrieve_primary_key_with_streamlit(command, conn)
+    else:
+        return retrieve_primary_key_with_standard_connection(command)
 
 
 def set_primary_key_from_df(df, table_name, conn=None):
@@ -324,13 +399,8 @@ def set_primary_key_from_df(df, table_name, conn=None):
 
 
 def replace_df_to_table(df, table_name, conn=None):
-    if USES_STREAMLIT:
-        df.to_sql(table_name, engine_connect(), if_exists="replace")
-        set_primary_key_from_df(df, table_name, conn)
-
-    else:
-        df.to_sql(table_name, engine_connect(), if_exists="replace")
-        set_primary_key_from_df(df, table_name)
+    df.to_sql(table_name, engine_connect(), if_exists="replace")
+    set_primary_key_from_df(df, table_name, conn)
 
 
 def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_index=True):
@@ -345,17 +415,11 @@ def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_i
                     df = df.loc[(df.index.to_pydatetime() < db_start_index) | (df.index.to_pydatetime() > db_end_index)]
 
         if len(df) > 0:
-            if USES_STREAMLIT:
-                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50,
-                          index=append_index)
-                logger.debug(f"Streamlit connect: appended {len(df)}")
-                set_primary_key_from_df(df, table_name, conn)
-            else:
-                df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50,
-                          index=append_index)
-                set_primary_key_from_df(df, table_name)
+            df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50,
+                      index=append_index)
+            logger.debug(f"Streamlit connect: appended {len(df)}")
+            set_primary_key_from_df(df, table_name, conn)
             logger.debug(f"Appended values outside current bounds only (Total new values: {len(df)}).")
-
         else:
             logger.debug("Nothing to append.")
 
@@ -368,25 +432,55 @@ def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_i
         logger.debug("Permission denied for sequence dashcams_event_id_seq")
 
 
+def get_min_max_with_streamlit(table_name, id_name, conn):
+    """
+    Retrieves the minimum and maximum primary key values using a Streamlit connection.
+    :param table_name: Name of the table.
+    :param id_name: Name of the primary key column.
+    :param conn: Streamlit database connection object.
+    :return: Tuple (min, max) of primary key values.
+    """
+    command = f"SELECT MIN({id_name}) AS min, MAX({id_name}) AS max FROM {table_name};"
+    df = query_with_streamlit(command, conn)
+    if df is not None and not df.empty:
+        return df.iloc[0]["min"], df.iloc[0]["max"]
+    else:
+        logger.warning(f"Failed to retrieve min and max primary key values for table {table_name} using Streamlit.")
+        return None, None
+
+
+def get_min_max_with_standard_connection(table_name, id_name):
+    """
+    Retrieves the minimum and maximum primary key values using a standard PostgreSQL connection.
+    :param table_name: Name of the table.
+    :param id_name: Name of the primary key column.
+    :return: Tuple (min, max) of primary key values.
+    """
+    command = f"SELECT MIN({id_name}), MAX({id_name}) FROM {table_name};"
+    result = execute_command(command, fetch_one)
+    if result:
+        return result[0], result[1]
+    else:
+        logger.warning(
+            f"Failed to retrieve min and max primary key values for table {table_name} using standard connection.")
+        return None, None
+
+
 def get_min_max_primary_key(table_name, id_name=None, conn=None):
+    """
+    Retrieves the minimum and maximum primary key values for a given table.
+    :param table_name: Name of the table to query.
+    :param id_name: Name of the primary key column (optional).
+    :param conn: Database connection object (optional, for Streamlit connections).
+    :return: Tuple (min, max) of primary key values.
+    """
     if id_name is None:
         id_name = retrieve_primary_key(table_name)
 
-    min = None
-    max = None
-    command = f"SELECT MIN({id_name}), MAX({id_name})  from {table_name};"
     if USES_STREAMLIT:
-        df = query_with_streamlit(command, conn)
-        if df is not None:
-            min = df.iloc[0]["min"]
-            max = df.iloc[0]["max"]
+        return get_min_max_with_streamlit(table_name, id_name, conn)
     else:
-        result = execute_command(command, fetch_one)
-        if result:
-            min = result[0]
-            max = result[1]
-
-    return min, max
+        return get_min_max_with_standard_connection(table_name, id_name)
 
 
 def get_timezone():
@@ -402,53 +496,87 @@ def enclose_in_quotes(input_str):
     return output_str
 
 
-def read_table_with_select(table_name, params=None, conn=None, convert_to_text=True):
-    if USES_FIREBASE:
-        from google.cloud.firestore_v1 import FieldFilter
-        if params is None:
-            params = {}
-        if not isinstance(params, dict):
-            raise ValueError("Params must be a dictionary for Firebase.")
+def read_table_with_firebase(table_name, params, conn):
+    """
+    Reads data from a Firebase collection and converts it to a DataFrame.
+    :param table_name: Name of the Firebase collection.
+    :param params: Query parameters as a dictionary.
+    :param conn: Firebase connection object.
+    :return: DataFrame containing the queried data.
+    """
+    from google.cloud.firestore_v1 import FieldFilter
 
-        if conn is None:
-            raise ValueError("Connection must be provided for Firebase.")
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        raise ValueError("Params must be a dictionary for Firebase.")
 
-        data = conn.collection(table_name)
+    if conn is None:
+        raise ValueError("Connection must be provided for Firebase.")
 
-        if "where" in params.keys():
-            for clause in params["where"]:
-                data = data.where(filter=FieldFilter(*clause))
+    data = conn.collection(table_name)
 
-        if "order_by" in params.keys():
-            data = data.order_by(params["order_by"][0], direction=params["order_by"][1])
+    if "where" in params.keys():
+        for clause in params["where"]:
+            data = data.where(filter=FieldFilter(*clause))
 
-        if "limit" in params.keys():
-            data = data.limit_to_last(params["limit"])
+    if "order_by" in params.keys():
+        data = data.order_by(params["order_by"][0], direction=params["order_by"][1])
 
-        data = data.get()
-        df = collection_reference_to_dataframe(data, is_list=True)
-        return df
+    if "limit" in params.keys():
+        data = data.limit_to_last(params["limit"])
 
+    data = data.get()
+    df = collection_reference_to_dataframe(data, is_list=True)
+    return df
+
+
+def read_table_with_sql(table_name, params, conn, convert_to_text):
+    """
+    Reads data from a SQL table and converts it to a DataFrame.
+    :param table_name: Name of the SQL table.
+    :param params: Query parameters as a list of conditions.
+    :param conn: Database connection object.
+    :param convert_to_text: Whether to convert the SQL command to a SQLAlchemy text object.
+    :return: DataFrame containing the queried data.
+    """
+    command = f"SELECT * FROM {table_name} "
+    if params and len(params) > 0:
+        where_clause = "WHERE "
+        command = command + where_clause
+        for vals in params:
+            command = command + ' '.join(vals) + ' '
+
+    logger.debug(f"Reading table with select: {command}")
+
+    # Query using Streamlit connection
+    if USES_STREAMLIT:
+        df = query_with_streamlit(command, conn)
+
+    # Query using standard SQLAlchemy connection
     else:
-        command = f"SELECT * FROM {table_name} "
-        if len(params) > 0:
-            where_clause = "WHERE "
-            command = command + where_clause
-            for vals in params:
-                command = command + ' '.join(vals) + ' '
-        logger.debug(f"Reading table with select: {command}")
+        if conn is None:
+            conn = engine_connect()
+        if convert_to_text:
+            command = text(command)
+        df = pd.read_sql(command, conn)
 
-        if USES_STREAMLIT:
-            df = query_with_streamlit(command, conn)
+    return df
 
-        else:
-            if conn is None:
-                conn = engine_connect()
-            # if isinstance(conn, Connection):  # For SQLAlchemy
-            if convert_to_text:
-                command = text(command)
-            df = pd.read_sql(command, conn)
-        return df
+
+def read_table_with_select(table_name, params=None, conn=None, convert_to_text=True):
+    """
+    Reads a table using either Firebase or SQL, based on the connection type.
+    :param table_name: Name of the table or Firebase collection.
+    :param params: Query parameters as a dictionary (for Firebase) or list of conditions (for SQL).
+    :param conn: Connection object (Firebase or SQL).
+    :param convert_to_text: Whether to convert the SQL command to a SQLAlchemy text object.
+    :return: DataFrame containing the queried data.
+    """
+    if USES_FIREBASE:
+        return read_table_with_firebase(table_name, params, conn)
+    else:
+        return read_table_with_sql(table_name, params, conn, convert_to_text)
 
 
 def get_camera_info_from_db(conn):
@@ -530,13 +658,15 @@ def read_vehicle_forecast_data_from_database(current_date, camera_id, history_le
     # Fetch vehicle counts data
     vehicle_conditions = [
         [DATETIME_KEY_NAME, "<=", current_date],
-        [CAMERA_ID_KEY_NAME, "==", str(camera_id)] if USES_FIREBASE else [CAMERA_ID_KEY_NAME, "=", enclose_in_quotes(str(camera_id))]
+        [CAMERA_ID_KEY_NAME, "==", str(camera_id)] if USES_FIREBASE else [CAMERA_ID_KEY_NAME, "=",
+                                                                          enclose_in_quotes(str(camera_id))]
     ]
     df_vehicles = fetch_data(VEHICLE_COUNTS_TABLE_NAME, vehicle_conditions)
 
     # Process and return data
     latest_weather_info = df_weather.iloc[0].copy()
-    df_features = prepare_features_for_vehicle_counts(df_vehicles, df_weather, dropna=True, include_weather_description=True)
+    df_features = prepare_features_for_vehicle_counts(df_vehicles, df_weather, dropna=True,
+                                                      include_weather_description=True)
     return df_features.iloc[-history_length:], latest_weather_info
 
 
