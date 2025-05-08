@@ -6,6 +6,7 @@ import psycopg2
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from libs.foxutils.utils.core_utils import settings
+import numpy as np
 
 logger = logging.getLogger("emia_utils.database_utils")
 
@@ -744,6 +745,13 @@ def read_vehicle_forecast_data_from_database(current_date, camera_id, history_le
 
     # Fetch weather data
     df_weather = fetch_data(WEATHER_TABLE_NAME, [[DATETIME_KEY_NAME, "<=", current_date]])
+    if len(df_weather) > 0:
+        latest_weather_info = df_weather.iloc[-1:].copy()
+    else:
+        logger.warning("No weather data found. Using latest value.")
+        df_weather = fetch_data(WEATHER_TABLE_NAME, [])
+        df_weather = df_weather.iloc[-1:]
+        latest_weather_info = df_weather.copy()
 
     # Fetch vehicle counts data
     vehicle_conditions = [
@@ -751,9 +759,6 @@ def read_vehicle_forecast_data_from_database(current_date, camera_id, history_le
         [CAMERA_ID_KEY_NAME, "==", str(camera_id)]
     ]
     df_vehicles = fetch_data(VEHICLE_COUNTS_TABLE_NAME, vehicle_conditions)
-
-    # Process and return data
-    latest_weather_info = df_weather.iloc[0].copy()
     df_features = prepare_features_for_vehicle_counts(df_vehicles, df_weather, dropna=True,
                                                       include_weather_description=True)
     return df_features.iloc[-history_length:], latest_weather_info
