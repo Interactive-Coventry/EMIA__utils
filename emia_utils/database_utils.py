@@ -461,7 +461,7 @@ def replace_df_to_table(df, table_name, conn=None):
     set_primary_key_from_df(df, table_name, conn)
 
 
-def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_index=True):
+def append_df_to_table(df, table_name, primary_keys, append_only_new=True, conn=None, append_index=True):
     """
     Append a DataFrame to a PostgreSQL table.
     :param df: DataFrame to append.
@@ -472,23 +472,30 @@ def append_df_to_table(df, table_name, append_only_new=True, conn=None, append_i
     :return: None
     """
     try:
-        if append_only_new:
-            if append_index:
-                index = df.index.name
-                db_start_index, db_end_index = get_min_max_primary_key(table_name, index, conn)
-                if db_start_index is not None and db_end_index is not None:
-                    logger.debug(
-                        f"Table [{table_name}] with index [{index}] has start index {db_start_index} and end index {db_end_index}.")
-                    df = df.loc[(df.index.to_pydatetime() < db_start_index) | (df.index.to_pydatetime() > db_end_index)]
+        if append_only_new and primary_keys:
+            existing_rows = []
+            for _, row in df.iterrows():
+                query_conditions = " AND ".join(
+                    [f"{key} = '{row[key]}'" for key in primary_keys]
+                )
+                query = f"SELECT 1 FROM {table_name} WHERE {query_conditions} LIMIT 1"
+
+                result = execute_command(query, target_function=lambda cur: cur.fetchone())
+                if result:  # If a row exists, mark it for exclusion
+                    existing_rows.append(row.name)
+
+            if existing_rows:
+                df = df.drop(existing_rows)
+
+            if "index" in df.columns:
+                df = df.drop(columns=["index"])
 
         if len(df) > 0:
             df.to_sql(table_name, engine_connect(), if_exists="append", schema="public", chunksize=50,
                       index=append_index)
-            logger.debug(f"Streamlit connect: appended {len(df)}")
-            set_primary_key_from_df(df, table_name, conn)
-            logger.debug(f"Appended values outside current bounds only (Total new values: {len(df)}).")
+            logger.debug(f"Appended {len(df)} rows to the table '{table_name}'.")
         else:
-            logger.debug("Nothing to append.")
+            logger.debug("No new rows to append.")
 
     except IntegrityError as e:
         logger.debug(f"IntegrityError: {e}")
@@ -614,7 +621,8 @@ def read_table_with_sql(table_name, params, conn, convert_to_text):
         for condition in params["where"]:
             if len(condition) == 3:  # Ensure the condition has field, operator, and value
                 field, operator, value = condition
-                if isinstance(value, str):
+                from numbers import Number
+                if not isinstance(value, Number):
                     value = f"'{value}'"
                 if operator == "==":
                     operator = "="
@@ -625,7 +633,7 @@ def read_table_with_sql(table_name, params, conn, convert_to_text):
 
     if "order_by" in params:
         column, direction = params["order_by"]
-        direction = direction.upper()  # Ensure direction is uppercase (ASC or DESC)
+        direction = "ASC" if direction.upper() == "ASCENDING" else "DESC"
         if direction not in ["ASC", "DESC"]:
             raise ValueError("Invalid order direction. Must be 'ASC' or 'DESC'.")
         command += f" ORDER BY {column} {direction}"
@@ -682,12 +690,12 @@ def append_data_to_database(df, table_name, primary_keys, conn):
     :param primary_keys: Primary key(s) for deduplication or indexing.
     :param conn: Database connection object.
     """
+    df.reset_index(inplace=True, drop=False)  # Ensure the index is included as a column
     if USES_FIREBASE:
-        df.reset_index(inplace=True, drop=False)  # Ensure the index is included as a column
         row_dict = df.iloc[0].to_dict()
         insert_row_to_firebase(conn, row_dict, table_name, primary_keys)
     else:
-        append_df_to_table(df, table_name, append_only_new=True, conn=conn, append_index=True)
+        append_df_to_table(df, table_name, primary_keys, append_only_new=True, conn=conn, append_index=False)
 
 
 def append_weather_data_to_database(weather_df, conn):
@@ -716,7 +724,7 @@ def append_image_analysis_data_to_database(target_datetime, camera_id, anomaly_l
         "forecast_30min": int(forecast_30min),
         "forecast_5min": int(forecast_5min),
     }
-    im_analysis_df = pd.DataFrame([row_dict]).set_index(DATETIME_KEY_NAME)
+    im_analysis_df = pd.DataFrame([row_dict])
     append_data_to_database(im_analysis_df, IMAGE_ANALYSIS_TABLE_NAME, [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME], conn)
 
 
@@ -724,17 +732,14 @@ def read_vehicle_forecast_data_from_database(current_date, camera_id, history_le
     batch_size = 32
 
     def fetch_data(table_name, where_conditions):
+        params = {
+            "where": where_conditions,
+            "order_by": [DATETIME_KEY_NAME, "ASCENDING"] if USES_FIREBASE else [DATETIME_KEY_NAME, "DESC"],
+            "limit": batch_size,
+        }
         if USES_FIREBASE:
-            params = {
-                "where": where_conditions,
-                "order_by": [DATETIME_KEY_NAME, firestore.Query.ASCENDING],
-                "limit": batch_size,
-            }
             return read_table_with_select(table_name, params, conn)
         else:
-            params = [[DATETIME_KEY_NAME, "<=", enclose_in_quotes(current_date)]]
-            fetch_top = f"\nORDER BY {DATETIME_KEY_NAME} DESC\nFETCH FIRST {batch_size} ROWS ONLY"
-            params[-1].append(fetch_top)
             return read_table_with_select(table_name, params, conn=conn, convert_to_text=False)
 
     # Fetch weather data
@@ -743,8 +748,7 @@ def read_vehicle_forecast_data_from_database(current_date, camera_id, history_le
     # Fetch vehicle counts data
     vehicle_conditions = [
         [DATETIME_KEY_NAME, "<=", current_date],
-        [CAMERA_ID_KEY_NAME, "==", str(camera_id)] if USES_FIREBASE else [CAMERA_ID_KEY_NAME, "=",
-                                                                          enclose_in_quotes(str(camera_id))]
+        [CAMERA_ID_KEY_NAME, "==", str(camera_id)]
     ]
     df_vehicles = fetch_data(VEHICLE_COUNTS_TABLE_NAME, vehicle_conditions)
 

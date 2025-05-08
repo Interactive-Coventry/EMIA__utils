@@ -445,7 +445,6 @@ def prepare_features_for_vehicle_counts(df_vehicles, df_weather=None, dropna=Tru
         start_date = np.min(df_vehicles.index)
         end_date = np.max(df_vehicles.index)
         logger.debug(f"Fetched data corresponds to period with Start date = {start_date} and End date = {end_date}.")
-        logger.debug(f"Feature Names:\n{df_vehicles.columns.tolist()}")
 
     return df_vehicles
 
