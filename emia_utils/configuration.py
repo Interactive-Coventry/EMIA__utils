@@ -17,9 +17,7 @@ CAMERA_ID_KEY_NAME = "camera_id"
 LATITUDE_KEY_NAME = "lat"
 LONGITUDE_KEY_NAME = "lng"
 DATETIME_KEY_NAME = "datetime"
-ANOMALY_TYPE_KEY_NAME = "anomaly_type"
-WEATHER_TYPE_KEY_NAME = "weather_type"
-WETNESS_TYPE_KEY_NAME = "wetness_type"
+
 
 CAMERA_TYPES = {0: "Expressway CCTV", 1: "Dashcam"}
 

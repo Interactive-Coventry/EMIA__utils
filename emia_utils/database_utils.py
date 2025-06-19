@@ -711,20 +711,7 @@ def append_vehicle_counts_data_to_database(vehicle_counts_df, conn):
     append_data_to_database(vehicle_counts_df, VEHICLE_COUNTS_TABLE_NAME, [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME], conn)
 
 
-def append_image_analysis_data_to_database(target_datetime, camera_id, anomaly_label, weather_label, wetness_label,
-                                           accident, congestion, flood, forecast_30min, forecast_5min, conn):
-    row_dict = {
-        DATETIME_KEY_NAME: target_datetime,
-        CAMERA_ID_KEY_NAME: str(camera_id),
-        ANOMALY_TYPE_KEY_NAME: ANOMALY_DICT.get(anomaly_label, 0),
-        WEATHER_TYPE_KEY_NAME: WEATHER_DICT.get(weather_label, 0),
-        WETNESS_TYPE_KEY_NAME: WETNESS_DICT.get(wetness_label, 0),
-        "accident": bool(accident),
-        "congestion": bool(congestion),
-        "flood": bool(flood),
-        "forecast_30min": int(forecast_30min),
-        "forecast_5min": int(forecast_5min),
-    }
+def append_image_analysis_data_to_database(row_dict, conn):
     im_analysis_df = pd.DataFrame([row_dict])
     append_data_to_database(im_analysis_df, IMAGE_ANALYSIS_TABLE_NAME, [DATETIME_KEY_NAME, CAMERA_ID_KEY_NAME], conn)
 
