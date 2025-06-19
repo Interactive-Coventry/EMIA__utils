@@ -230,38 +230,43 @@ def download_dataset_12_car_park_availability():
 # Dataset 21
 
 def fetch_traffic_images_from_link(path, page_size='10000', target_camera_id=None):
-    json_obj = get_json_object_from_http_request(path)
-    current_time = datetime.now(TZ_SG)
+    try:
+        json_obj = get_json_object_from_http_request(path)
+        current_time = datetime.now(TZ_SG)
 
-    import collections.abc
-    if not isinstance(target_camera_id, collections.abc.Sequence):
-        target_camera_id = [target_camera_id]
+        import collections.abc
+        if not isinstance(target_camera_id, collections.abc.Sequence):
+            target_camera_id = [target_camera_id]
 
-    if 'value' in json_obj:
-        for x in json_obj['value']:
-            camera_id = x['CameraID']
-            if target_camera_id is None or camera_id in target_camera_id:
-                latitude = x['Latitude']
-                longtitude = x['Longitude']
-                img_url = x['ImageLink']
+        if 'value' in json_obj:
+            for x in json_obj['value']:
+                camera_id = x['CameraID']
+                if target_camera_id is None or camera_id in target_camera_id:
+                    latitude = x['Latitude']
+                    longtitude = x['Longitude']
+                    img_url = x['ImageLink']
 
-                folder = camera_id
-                filedir = pathjoin(core_utils.datasets_dir, DATAMALL_FOLDER, path.replace('/', sep).replace('?', ''),
-                                   folder)
-                if not exists(filedir):
-                    makedirs(filedir)
+                    folder = camera_id
+                    filedir = pathjoin(core_utils.datasets_dir, DATAMALL_FOLDER,
+                                       path.replace('/', sep).replace('?', ''),
+                                       folder)
+                    if not exists(filedir):
+                        makedirs(filedir)
 
-                # print(f'Target image url: {img_url}')
+                    # print(f'Target image url: {img_url}')
 
-                img_filename = img_url.split('?')[0].split('/')[-1]
-                current_time_string = img_filename.split('_')[2]
-                filename = pathjoin(filedir, '_'.join([camera_id, current_time_string]) + '.jpg')
-                core_utils.save_image_from_link(img_url, filename)
-    else:
-        print(f'Data fetching for traffic images failed at time {datetime.now()} with response:')
-        print(json_obj)
+                    img_filename = img_url.split('?')[0].split('/')[-1]
+                    current_time_string = img_filename.split('_')[2]
+                    filename = pathjoin(filedir, '_'.join([camera_id, current_time_string]) + '.jpg')
+                    core_utils.save_image_from_link(img_url, filename)
+        else:
+            print(f'Data fetching for traffic images failed at time {datetime.now()} with response:')
+            print(json_obj)
 
-    return json_obj
+        return json_obj
+    except json.decoder.JSONDecodeError as e:
+        print(f"JSONDecodeError: {e}")
+        return []
 
 
 def download_dataset_21_traffic_images():
